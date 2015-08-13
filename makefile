@@ -4,7 +4,7 @@ part = XC6SLX9-TQG144-2
 
 ucfFiles = ..\\vhdl\\extra\\constraints.ucf
 
-srcDir = Z:\\git\\Clash\\examples\\Seg7LED
+srcDir = Z:\\git\\Clash\\examples\\MOS6502
 working = working
 
 # coregen_work_dir ?= ./coregen-tmp

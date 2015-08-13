@@ -11,11 +11,13 @@ import CLaSH.Sized.Unsigned
 import Language.Haskell.TH
 import CLaSH.Promoted.Nat
 
+import SevenSeg
 import Cpu
 
 
--- declare d4096
-$(decLiteralD 4096)
+
+-- declare d65536
+$(decLiteralD 65536)
 
 
 {-# ANN topEntity
@@ -34,8 +36,14 @@ $(decLiteralD 4096)
 
 
 
-topEntity :: Signal CpuProbes
-topEntity = probes where
+topEntity :: Signal (BitVector 4, BitVector 8)
+topEntity = ss where 
+  ss = sevenSegA (prPC <$> topEntity')
+
+
+topEntity' :: Signal CpuProbes
+topEntity' = probes where
   (out, probes) = unbundle $ cpuA $ (CpuIn <$> din)
-  adr = resize <$> (addr <$> out) :: Signal (Unsigned 12)
-  din = blockRamPow2 (replicate d4096 (3 ::Unsigned 8)) adr adr (writeEn <$> out) (dataOut <$> out)
+  adr = (resize . addr) <$> out :: Signal (Unsigned 9)
+  din = romPow2 (replicate d512 (3 ::Unsigned 8)) adr
+  -- din = blockRamPow2 (replicate d65536 (3 ::Unsigned 8)) adr adr (writeEn <$> out) (dataOut <$> out)
