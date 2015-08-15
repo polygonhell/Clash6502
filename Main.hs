@@ -11,13 +11,15 @@ import CLaSH.Sized.Unsigned
 import Language.Haskell.TH
 import CLaSH.Promoted.Nat
 
+import Types
 import SevenSeg
 import Cpu
-
-
+import qualified Data.List as L
 
 -- declare d65536
 $(decLiteralD 65536)
+$(decLiteralD 65017)
+
 
 
 {-# ANN topEntity
@@ -38,12 +40,25 @@ $(decLiteralD 65536)
 
 topEntity :: Signal (BitVector 4, BitVector 8)
 topEntity = ss where 
-  ss = sevenSegA (prPC <$> topEntity')
+  ss = sevenSegA (prPC <$> system)
+
+ram64K :: Signal Addr -> Signal Bool -> Signal Byte -> Signal Byte
+ram64K addr wrEn dataIn = blockRamPow2 testRAMContents addr addr wrEn dataIn
+
+testRAMContents :: Vec 65536 Byte
+testRAMContents = (replicate d512 0) ++ (0xa9:>0x15 :> 0x00 :> Nil) ++ (replicate d65017 (0xa9 ::Byte)) ++ (0x00 :> 0x02 :> 0x00 :> 0x00 :> Nil)
 
 
-topEntity' :: Signal CpuProbes
-topEntity' = probes where
+
+system :: Signal CpuProbes
+system = probes where
   (out, probes) = unbundle $ cpuA $ (CpuIn <$> din)
-  adr = (resize . addr) <$> out :: Signal (Unsigned 9)
-  din = romPow2 (replicate d512 (3 ::Unsigned 8)) adr
-  -- din = blockRamPow2 (replicate d65536 (3 ::Unsigned 8)) adr adr (writeEn <$> out) (dataOut <$> out)
+  adr = (resize . addr) <$> out :: Signal (Unsigned 16)
+  din = ram64K adr (writeEn <$> out) (dataOut <$> out)
+
+
+
+-- runSystem :: IO
+runSystem = putStr $ unlines $ L.map (show) (sampleN 10 system)
+
+
