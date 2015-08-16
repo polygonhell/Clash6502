@@ -18,7 +18,7 @@ import qualified Data.List as L
 
 -- declare d65536
 $(decLiteralD 65536)
-$(decLiteralD 65016)
+$(decLiteralD 65012)
 
 
 
@@ -43,15 +43,19 @@ topEntity = ss where
   ss = sevenSegA (resize . prA <$> system)
 
 ram64K :: Signal Addr -> Signal Bool -> Signal Byte -> Signal Byte
-ram64K addr wrEn dataIn = blockRamPow2 testRAMContents addr addr wrEn dataIn
+-- ram64K addr wrEn dataIn = blockRamPow2 testRAMContents addr addr wrEn dataIn
+ram64K addr wrEn dataIn = unpack <$> blockRamFilePow2 "utils/test.bin" addr addr wrEn (pack <$> dataIn)
+
 
 testRAMContents :: Vec 65536 Byte
 testRAMContents = (0x1:>0x2:>0x3:>0x4:>0x05 :> Nil) ++ 
                   (replicate d507 0) ++ 
                   (
-                   0xad:>0x00:>0x02 :>    -- lda $200                   
+                   0xa2:>0x04 :>
+                   0xbd:>0x00:>0x02 :>    -- lda $200,x   
+                   0xa2:>0x02 :>                
                    0x00 :> Nil) ++ 
-                  (replicate d65016 (0xa9 ::Byte)) ++ (0x00 :> 0x02 :> 0x00 :> 0x00 :> Nil)
+                  (replicate d65012 (0xa9 ::Byte)) ++ (0x00 :> 0x02 :> 0x00 :> 0x00 :> Nil)
 
 
 

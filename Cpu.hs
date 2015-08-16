@@ -59,6 +59,7 @@ data State =  Halt
             | Fetch2
             | Fetch3
             | Read1
+            | Write1
             deriving (Show)
 
 
@@ -158,10 +159,12 @@ cpu (Fetch2, reg) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where
 
 -- Low High byte of a 2 byte address -- does not increase PC becasue it happens when the instruction is executed
 cpu (Fetch3, reg@CpuRegisters{..}) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where
+  DecodedInst{..} = decoded
   st' = Read1
-  addr' = addrReg .|. ((resize dataIn :: Addr) `shiftL` 8)    -- Low read cleared out the upper byte
-  reg' = reg { addrReg = addr' }
-  cpuOut = CpuOut {dataOut = 0 , addr = addr' , writeEn = False}
+  addr' = (addrReg .|. ((resize dataIn :: Addr) `shiftL` 8))    -- Low read cleared out the upper byte
+  addr'' = computeAddrAbs reg diAddrOffset addr'
+  reg' = reg { addrReg = addr'' }
+  cpuOut = CpuOut {dataOut = 0 , addr = addr'' , writeEn = False}
   cpuProbes = probes Fetch3 st' reg' dataIn
 
 -- read a 1 byte value
@@ -169,6 +172,13 @@ cpu (Read1, reg) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where
   (reg', st', addr',  wrEn, dO) = run2 reg AddrImmediate dataIn
   cpuOut = CpuOut {dataOut = dO , addr = addr' , writeEn = wrEn}
   cpuProbes = probes Read1 st' reg' dataIn
+
+-- write 1 byte value -- this state is unnecessary but it keeps timing consisten with the real CPU
+-- Data was commited on the last clock, so we just cycle back to the Fetch state
+cpu (Write1, reg@CpuRegisters{..}) CpuIn{..} = ((st', reg), (cpuOut, cpuProbes)) where
+  st' = Fetch1
+  cpuOut = CpuOut {dataOut = 0 , addr = pcReg , writeEn = False}
+  cpuProbes = probes Write1 st' reg dataIn
 
 
 cpu (Halt, reg@CpuRegisters{..}) CpuIn{..} = ((Halt, reg), (cpuOut, cpuProbes)) where
@@ -193,10 +203,12 @@ run2 :: CpuRegisters -> AddrMode -> Byte -> (CpuRegisters, State, Addr, Bool, By
 run2 reg@CpuRegisters{..} addrMode dIn = (reg', st, addr, wrEn, dOut) where 
   DecodedInst{..} = decoded
   pc' = pcReg + 1
+  zpAddr = computeAddrZP reg diAddrOffset dIn -- computed address for potential ZP access
   (reg', st, addr, wrEn, dOut) = 
     case (addrMode) of
-      AddrZeroPage -> (reg, Read1, reqAddr, False, 0) where -- Note don't increase PC here because it runs back through Immediate which does
-                         reqAddr = computeAddrZP reg diAddrOffset dIn
+      AddrZeroPage -> case (diOpType) of
+                         OTStore -> (reg { pcReg = pc' }, Write1, zpAddr, True, regVal reg)
+                         _ -> (reg, Read1, zpAddr, False, 0)  -- Note don't increase PC here because it runs back through Immediate once the fetch is complete
       AddrImmediate -> case (diOpType) of
                          OTLoad -> ((load reg diReg dIn) {pcReg = pc'}, Fetch1, pc', False, 0)
                          OTAdc -> ((adc reg dIn) {pcReg = pc'}, Fetch1, pc', False, 0) 
@@ -204,11 +216,26 @@ run2 reg@CpuRegisters{..} addrMode dIn = (reg', st, addr, wrEn, dOut) where
       AddrAbsolute -> (reg { pcReg = pc', addrReg = addr'}, Fetch3, pc', False, 0) where
                          addr' = resize dIn -- Low byte of the address
 
+regVal :: CpuRegisters -> Byte
+regVal CpuRegisters{..}  = v where
+  DecodedInst{..} = decoded
+  v = case diReg of
+    RegA -> aReg
+    RegX -> xReg
+    RegY -> yReg
+
+
 
 computeAddrZP :: CpuRegisters -> AddrOffset -> Byte -> Addr 
 computeAddrZP reg@CpuRegisters{..} OffsetPreAddX dIn = resize (dIn + xReg)
 computeAddrZP reg@CpuRegisters{..} OffsetPreAddY dIn = resize (dIn + yReg)
 computeAddrZP _ _ dIn = resize dIn
+
+-- TODO page boundary penalty
+computeAddrAbs :: CpuRegisters -> AddrOffset -> Addr -> Addr 
+computeAddrAbs reg@CpuRegisters{..} OffsetPreAddX addrIn = addrIn + (resize xReg)
+computeAddrAbs reg@CpuRegisters{..} OffsetPreAddY addrIn = addrIn + (resize yReg)
+computeAddrAbs _ _ addrIn = addrIn
 
 
 
