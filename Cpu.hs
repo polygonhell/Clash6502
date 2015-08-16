@@ -57,31 +57,37 @@ data State =  Halt
             | FetchPCH 
             | Fetch1
             | Fetch2
+            | Fetch3
             | Read1
             deriving (Show)
 
 
 data CpuProbes = CpuProbes
-  { prState :: State
+  { prStateIn :: State
+  , prState :: State
   , prPC :: Addr
   , prA :: Byte
   , prX :: Byte
   , prY :: Byte
   , prFlags :: Byte
   , prAddr :: Addr
+  , prDIn :: Byte
   }
 
 instance Show CpuProbes where
   show a = str where 
     -- str = "Hello"
     CpuProbes{..} = a
-    str = (printf "%10s" (show prState)) L.++ " " L.++ 
+    str = (printf "%-8s" (show prStateIn)) L.++ " " L.++ 
+          (printf "%-8s" (show prState)) L.++ " " L.++ 
           (printf "%04x" (toInteger prPC)) L.++ " " L.++ 
           (printf "%02x" (toInteger prA)) L.++ " " L.++ 
           (printf "%02x" (toInteger prX)) L.++ " " L.++ 
           (printf "%02x" (toInteger prY)) L.++ " " L.++ 
           (pRegString prFlags) L.++ " " L.++ 
-          (show prAddr)
+          (printf "%04x" (toInteger prAddr)) L.++ " " L.++ 
+          (printf "%02x" (toInteger prDIn))
+
 
 
 
@@ -118,7 +124,7 @@ cpu (Init, reg@CpuRegisters{..}) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) 
   st' = FetchPCL
   reg' = reg {addrReg = resetVector}
   cpuOut = CpuOut {dataOut = 0 , addr = resetVector, writeEn = False}
-  cpuProbes = probes st' reg'
+  cpuProbes = probes Init st' reg' dataIn
 
 -- Two states to Fetch the 16 bit PC from memory
 cpu (FetchPCL, reg@CpuRegisters{..}) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where 
@@ -127,7 +133,7 @@ cpu (FetchPCL, reg@CpuRegisters{..}) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbe
   addr' = addrReg + 1
   reg' = reg {pcReg = pc', addrReg = addr'}
   cpuOut = CpuOut {dataOut = 0 , addr = addr', writeEn = False}
-  cpuProbes = probes st' reg'
+  cpuProbes = probes FetchPCL st' reg' dataIn
 
 cpu (FetchPCH, reg@CpuRegisters{..}) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where 
   st' = Fetch1
@@ -135,35 +141,43 @@ cpu (FetchPCH, reg@CpuRegisters{..}) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbe
   -- TODO RTS instruction requires incrementing the PC on return
   reg' = reg {pcReg = pc'}
   cpuOut = CpuOut {dataOut = 0 , addr = pc', writeEn = False}
-  cpuProbes = probes st' reg'
+  cpuProbes = probes FetchPCH st' reg' dataIn
 
 -- Instruction Fetch
 cpu (Fetch1, reg) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where
   di@DecodedInst{..} = decode dataIn
   (reg', st', wrEn, dO) = run di reg
   cpuOut = CpuOut {dataOut = dO, addr = pcReg reg', writeEn = False}
-  cpuProbes = probes st' reg'
+  cpuProbes = probes Fetch1 st' reg' dataIn
 
 cpu (Fetch2, reg) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where
   DecodedInst{..} = decoded reg
   (reg', st', addr',  wrEn, dO) = run2 reg diAddrMode dataIn 
   cpuOut = CpuOut {dataOut = dO , addr = addr' , writeEn = wrEn}
-  cpuProbes = probes st' reg'
+  cpuProbes = probes Fetch2 st' reg' dataIn
+
+-- Low High byte of a 2 byte address -- does not increase PC becasue it happens when the instruction is executed
+cpu (Fetch3, reg@CpuRegisters{..}) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where
+  st' = Read1
+  addr' = addrReg .|. ((resize dataIn :: Addr) `shiftL` 8)    -- Low read cleared out the upper byte
+  reg' = reg { addrReg = addr' }
+  cpuOut = CpuOut {dataOut = 0 , addr = addr' , writeEn = False}
+  cpuProbes = probes Fetch3 st' reg' dataIn
 
 -- read a 1 byte value
 cpu (Read1, reg) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where
   (reg', st', addr',  wrEn, dO) = run2 reg AddrImmediate dataIn
   cpuOut = CpuOut {dataOut = dO , addr = addr' , writeEn = wrEn}
-  cpuProbes = probes st' reg'
+  cpuProbes = probes Read1 st' reg' dataIn
 
 
 cpu (Halt, reg@CpuRegisters{..}) CpuIn{..} = ((Halt, reg), (cpuOut, cpuProbes)) where
   cpuOut = CpuOut {dataOut = 0 , addr = addrReg, writeEn = False}
-  cpuProbes = probes Halt reg
+  cpuProbes = probes Halt Halt reg dataIn
 
 
-probes :: State -> CpuRegisters -> CpuProbes
-probes st CpuRegisters{..} = CpuProbes st pcReg aReg xReg yReg pReg addrReg 
+probes :: State -> State -> CpuRegisters -> Byte -> CpuProbes
+probes stIn st CpuRegisters{..} d = CpuProbes stIn st pcReg aReg xReg yReg pReg addrReg d
 
 -- Deal with 1 byte instructions
 run :: DecodedInst -> CpuRegisters -> (CpuRegisters, State, Bool, Byte)
@@ -174,18 +188,27 @@ run de@DecodedInst{..} reg@CpuRegisters{..} = (reg', st, wrEn, dOut) where
     (_, _) -> (reg { decoded = de, pcReg = pc'}, Fetch2, False, 0)
 
 
--- Deal with 2 byte instructions
+-- Deal with instructions that consume data
 run2 :: CpuRegisters -> AddrMode -> Byte -> (CpuRegisters, State, Addr, Bool, Byte)
 run2 reg@CpuRegisters{..} addrMode dIn = (reg', st, addr, wrEn, dOut) where 
   DecodedInst{..} = decoded
   pc' = pcReg + 1
   (reg', st, addr, wrEn, dOut) = 
     case (addrMode) of
-      AddrZeroPage -> (reg, Read1, resize dIn, False, 0) 
+      AddrZeroPage -> (reg, Read1, reqAddr, False, 0) where -- Note don't increase PC here because it runs back through Immediate which does
+                         reqAddr = computeAddrZP reg diAddrOffset dIn
       AddrImmediate -> case (diOpType) of
                          OTLoad -> ((load reg diReg dIn) {pcReg = pc'}, Fetch1, pc', False, 0)
                          OTAdc -> ((adc reg dIn) {pcReg = pc'}, Fetch1, pc', False, 0) 
                          _ -> (reg, Halt, pc', False, 0)
+      AddrAbsolute -> (reg { pcReg = pc', addrReg = addr'}, Fetch3, pc', False, 0) where
+                         addr' = resize dIn -- Low byte of the address
+
+
+computeAddrZP :: CpuRegisters -> AddrOffset -> Byte -> Addr 
+computeAddrZP reg@CpuRegisters{..} OffsetPreAddX dIn = resize (dIn + xReg)
+computeAddrZP reg@CpuRegisters{..} OffsetPreAddY dIn = resize (dIn + yReg)
+computeAddrZP _ _ dIn = resize dIn
 
 
 

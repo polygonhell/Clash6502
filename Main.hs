@@ -18,7 +18,7 @@ import qualified Data.List as L
 
 -- declare d65536
 $(decLiteralD 65536)
-$(decLiteralD 65005)
+$(decLiteralD 65016)
 
 
 
@@ -46,13 +46,12 @@ ram64K :: Signal Addr -> Signal Bool -> Signal Byte -> Signal Byte
 ram64K addr wrEn dataIn = blockRamPow2 testRAMContents addr addr wrEn dataIn
 
 testRAMContents :: Vec 65536 Byte
-testRAMContents = (0x1:>0x2:>0x3:>0x4 :> Nil) ++ 
-                  (replicate d508 0) ++ 
-                  (0xa9:>0x15 :> 0x69:>0x9 :> 0x69:>0x7f :> 0x69:>0x7f :> 0x65:>0x01 :> 
-                   0xa6:>0x00 :>
-                   0xa4:>0x02 :>
+testRAMContents = (0x1:>0x2:>0x3:>0x4:>0x05 :> Nil) ++ 
+                  (replicate d507 0) ++ 
+                  (
+                   0xad:>0x00:>0x02 :>    -- lda $200                   
                    0x00 :> Nil) ++ 
-                  (replicate d65005 (0xa9 ::Byte)) ++ (0x00 :> 0x02 :> 0x00 :> 0x00 :> Nil)
+                  (replicate d65016 (0xa9 ::Byte)) ++ (0x00 :> 0x02 :> 0x00 :> 0x00 :> Nil)
 
 
 
@@ -63,8 +62,7 @@ system = probes where
   din = ram64K adr (writeEn <$> out) (dataOut <$> out)
 
 
-
--- runSystem :: IO
-runSystem = putStr $ unlines $ L.map (show) (sampleN 30 system)
+-- Note we have to drop 1 because the initial state of dIn is undefined
+runSystem = putStr $ unlines $ L.map (show) $L.drop 1 (sampleN 40 system)
 
 
