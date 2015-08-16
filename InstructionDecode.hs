@@ -42,7 +42,7 @@ data OpType = OTNone
             | OTLoad
             | OTInterrupt
             | OTStore
-            | OTAdd
+            | OTAdc
 
            deriving (Show)
 
@@ -62,6 +62,10 @@ decode $opBrk     = DecodedInst AddrNone OTInterrupt OffsetNone RegNone
 decode $opNop     = DecodedInst AddrNone OTNone OffsetNone RegNone 
 
 decode $opLda_Imm = DecodedInst AddrImmediate OTLoad OffsetNone RegA 
+decode $opLdx_Imm = DecodedInst AddrImmediate OTLoad OffsetNone RegX 
+decode $opLdy_Imm = DecodedInst AddrImmediate OTLoad OffsetNone RegY 
+
+decode $opAdc_Imm = DecodedInst AddrImmediate OTAdc OffsetNone RegA
 
 decode a = trace ("Missing decode for " L.++ (show a)) DecodedInst AddrNone OTInterrupt OffsetNone RegNone
 

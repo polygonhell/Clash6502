@@ -9,7 +9,7 @@ module Cpu (cpuA, CpuIn(..), CpuOut(..), CpuProbes(..), State(..) ) where
 import CLaSH.Prelude
 import CLaSH.Sized.Unsigned
 import Debug.Trace
-
+import qualified Data.List as L
 import Types
 import Opcodes
 import InstructionDecode
@@ -17,6 +17,18 @@ import InstructionDecode
 
 resetVector :: Addr
 resetVector = 0xfffc
+
+
+negFlag   = 0x80 :: Byte
+ovFlag    = 0x40 :: Byte
+decFlag   = 0x08 :: Byte
+intFlag   = 0x04 :: Byte
+zeroFlag  = 0x02 :: Byte
+carryFlag = 0x01 :: Byte
+
+zeroNegMask = complement(negFlag .|. zeroFlag)
+zeroNegCarryOverflowMask = complement(negFlag .|. zeroFlag .|. ovFlag .|. carryFlag)
+
 
 data CpuIn = CpuIn 
   { dataIn :: Byte
@@ -41,6 +53,7 @@ data CpuProbes = CpuProbes
   { prState :: State
   , prPC :: Addr
   , prA :: Byte
+  , prFlags :: Byte
   , prAddr :: Addr
   } deriving (Show)
 
@@ -115,7 +128,7 @@ cpu (Halt, reg@CpuRegisters{..}) CpuIn{..} = ((Halt, reg), (cpuOut, cpuProbes)) 
 
 
 probes :: State -> CpuRegisters -> CpuProbes
-probes st CpuRegisters{..} = CpuProbes st pcReg aReg addrReg
+probes st CpuRegisters{..} = CpuProbes st pcReg aReg pReg addrReg 
 
 -- Deal with 1 byte instructions
 run :: DecodedInst -> CpuRegisters -> (CpuRegisters, State, Bool, Byte)
@@ -131,17 +144,34 @@ run2 :: CpuRegisters -> Byte -> (CpuRegisters, State, Bool, Byte)
 run2 reg@CpuRegisters{..} dIn = (reg', st, wrEn, dOut) where 
   DecodedInst{..} = decoded
   pc' = pcReg + 1
-  (reg', st, wrEn, dOut) = case (diOpType, diAddrMode) of
-    (OTLoad, AddrImmediate) -> ((load reg diReg dIn) {pcReg = pc'}, Fetch1, False, 0)
-    (_, _) -> (reg, Halt, False, 0)
+  (reg', st, wrEn, dOut) = case (diOpType) of
+    (OTLoad) -> ((load reg diReg dIn) {pcReg = pc'}, Fetch1, False, 0)
+    (OTAdc) -> ((adc reg dIn) {pcReg = pc'}, Fetch1, False, 0) 
+    _ -> (reg, Halt, False, 0)
 
 
+
+adc :: CpuRegisters -> Byte -> CpuRegisters
+adc regs@CpuRegisters{..} v = regs' where
+  cIn = pReg .&. carryFlag
+  res9 = (resize cIn :: Unsigned 9) + (resize aReg :: Unsigned 9) + (resize v :: Unsigned 9)
+  cOut = resize (res9 `shiftR` 8) :: Unsigned 8
+  res = resize res9  :: Unsigned 8
+  overflow = if (((aReg `xor` res) .&. (v `xor` res) .&. 0x80) == 0) then 0 else ovFlag
+  flags = (pReg .&. zeroNegCarryOverflowMask) .|. cOut .|. overflow .|. (setZeroAndNeg res)
+  regs' = regs {aReg = res, pReg = flags}
 
 load :: CpuRegisters -> Reg -> Byte -> CpuRegisters
-load regs RegA v = regs {aReg = v}
-load regs RegX v = regs {xReg = v}
-load regs RegY v = regs {yReg = v}
-load regs RegSP v = regs {spReg = v}
+load regs@CpuRegisters{..} reg v = regs' where
+  p' = (pReg .&. zeroNegMask) .|. (setZeroAndNeg v)
+  regs' = case reg of
+    RegA -> regs {aReg = v, pReg = p'}
+    RegX -> regs {xReg = v, pReg = p'}
+    RegY -> regs {yReg = v, pReg = p'} 
+
+setZeroAndNeg :: Byte -> Byte
+setZeroAndNeg 0 = zeroFlag
+setZeroAndNeg a = a .&. 0x80 
 
 
 cpuA = cpu `mealy` initialCpuState
