@@ -65,6 +65,8 @@ data CpuProbes = CpuProbes
   { prState :: State
   , prPC :: Addr
   , prA :: Byte
+  , prX :: Byte
+  , prY :: Byte
   , prFlags :: Byte
   , prAddr :: Addr
   }
@@ -73,7 +75,13 @@ instance Show CpuProbes where
   show a = str where 
     -- str = "Hello"
     CpuProbes{..} = a
-    str = (printf "%10s" (show prState)) L.++ " " L.++ (printf "%04x" (toInteger prPC)) L.++ " " L.++ (printf "%02x" (toInteger prA)) L.++ " " L.++ (pRegString prFlags) L.++ " " L.++ (show prAddr)
+    str = (printf "%10s" (show prState)) L.++ " " L.++ 
+          (printf "%04x" (toInteger prPC)) L.++ " " L.++ 
+          (printf "%02x" (toInteger prA)) L.++ " " L.++ 
+          (printf "%02x" (toInteger prX)) L.++ " " L.++ 
+          (printf "%02x" (toInteger prY)) L.++ " " L.++ 
+          (pRegString prFlags) L.++ " " L.++ 
+          (show prAddr)
 
 
 
@@ -155,7 +163,7 @@ cpu (Halt, reg@CpuRegisters{..}) CpuIn{..} = ((Halt, reg), (cpuOut, cpuProbes)) 
 
 
 probes :: State -> CpuRegisters -> CpuProbes
-probes st CpuRegisters{..} = CpuProbes st pcReg aReg pReg addrReg 
+probes st CpuRegisters{..} = CpuProbes st pcReg aReg xReg yReg pReg addrReg 
 
 -- Deal with 1 byte instructions
 run :: DecodedInst -> CpuRegisters -> (CpuRegisters, State, Bool, Byte)
