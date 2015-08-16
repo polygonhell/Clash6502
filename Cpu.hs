@@ -10,6 +10,8 @@ import CLaSH.Prelude
 import CLaSH.Sized.Unsigned
 import Debug.Trace
 import qualified Data.List as L
+import Text.Printf
+
 import Types
 import Opcodes
 import InstructionDecode
@@ -28,6 +30,15 @@ carryFlag = 0x01 :: Byte
 
 zeroNegMask = complement(negFlag .|. zeroFlag)
 zeroNegCarryOverflowMask = complement(negFlag .|. zeroFlag .|. ovFlag .|. carryFlag)
+
+
+pRegString :: Byte -> String
+pRegString v = res where
+  c = if (v .&. carryFlag) /= 0 then "C" else "c" 
+  z = if (v .&. zeroFlag) /= 0 then "Z" else "z" 
+  o = if (v .&. ovFlag) /= 0 then "O" else "o" 
+  n = if (v .&. negFlag) /= 0 then "N" else "n" 
+  res = n L.++ o L.++ z L.++ c 
 
 
 data CpuIn = CpuIn 
@@ -56,7 +67,14 @@ data CpuProbes = CpuProbes
   , prA :: Byte
   , prFlags :: Byte
   , prAddr :: Addr
-  } deriving (Show)
+  }
+
+instance Show CpuProbes where
+  show a = str where 
+    -- str = "Hello"
+    CpuProbes{..} = a
+    str = (printf "%10s" (show prState)) L.++ " " L.++ (printf "%04x" (toInteger prPC)) L.++ " " L.++ (printf "%02x" (toInteger prA)) L.++ " " L.++ (pRegString prFlags) L.++ " " L.++ (show prAddr)
+
 
 
 data CpuRegisters = CpuRegisters
@@ -72,6 +90,8 @@ data CpuRegisters = CpuRegisters
   -- current decoded instruction
   , decoded :: DecodedInst
   } deriving (Show)
+
+
 
 
 initialProcessorRegisters :: CpuRegisters
