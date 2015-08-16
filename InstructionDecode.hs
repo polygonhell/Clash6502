@@ -62,11 +62,19 @@ decode $opBrk     = DecodedInst AddrNone OTInterrupt OffsetNone RegNone
 decode $opNop     = DecodedInst AddrNone OTNone OffsetNone RegNone 
 
 decode $opLda_Imm = DecodedInst AddrImmediate OTLoad OffsetNone RegA 
+decode $opLda_ZP  = DecodedInst AddrZeroPage OTLoad OffsetNone RegA 
+
 decode $opLdx_Imm = DecodedInst AddrImmediate OTLoad OffsetNone RegX 
+decode $opLdx_ZP  = DecodedInst AddrZeroPage OTLoad OffsetNone RegX 
+
 decode $opLdy_Imm = DecodedInst AddrImmediate OTLoad OffsetNone RegY 
+decode $opLdy_ZP  = DecodedInst AddrZeroPage OTLoad OffsetNone RegY 
+
 
 decode $opAdc_Imm = DecodedInst AddrImmediate OTAdc OffsetNone RegA
+decode $opAdc_ZP  = DecodedInst AddrZeroPage OTAdc OffsetNone RegA
 
-decode a = trace ("Missing decode for " L.++ (show a)) DecodedInst AddrNone OTInterrupt OffsetNone RegNone
+decode a = DecodedInst AddrNone OTInterrupt OffsetNone RegNone
+--trace ("Missing decode for " L.++ (show a)) DecodedInst AddrNone OTInterrupt OffsetNone RegNone
 
 

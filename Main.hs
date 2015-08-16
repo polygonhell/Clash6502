@@ -18,7 +18,7 @@ import qualified Data.List as L
 
 -- declare d65536
 $(decLiteralD 65536)
-$(decLiteralD 65011)
+$(decLiteralD 65009)
 
 
 
@@ -40,13 +40,13 @@ $(decLiteralD 65011)
 
 topEntity :: Signal (BitVector 4, BitVector 8)
 topEntity = ss where 
-  ss = sevenSegA (prPC <$> system)
+  ss = sevenSegA (resize . prPC <$> system)
 
 ram64K :: Signal Addr -> Signal Bool -> Signal Byte -> Signal Byte
 ram64K addr wrEn dataIn = blockRamPow2 testRAMContents addr addr wrEn dataIn
 
 testRAMContents :: Vec 65536 Byte
-testRAMContents = (replicate d512 0) ++ (0xa9:>0x15 :> 0x69:>0x9 :> 0x69:>0x7f :> 0x69:>0x7f :> 0x00 :> Nil) ++ (replicate d65011 (0xa9 ::Byte)) ++ (0x00 :> 0x02 :> 0x00 :> 0x00 :> Nil)
+testRAMContents = (0x1:>0x2:>0x3:>0x4 :> Nil) ++ (replicate d508 0) ++ (0xa9:>0x15 :> 0x69:>0x9 :> 0x69:>0x7f :> 0x69:>0x7f :> 0x65:>0x01 :> 0x00 :> Nil) ++ (replicate d65009 (0xa9 ::Byte)) ++ (0x00 :> 0x02 :> 0x00 :> 0x00 :> Nil)
 
 
 

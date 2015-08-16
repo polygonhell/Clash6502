@@ -46,6 +46,7 @@ data State =  Halt
             | FetchPCH 
             | Fetch1
             | Fetch2
+            | Read1
             deriving (Show)
 
 
@@ -117,8 +118,14 @@ cpu (Fetch1, reg) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where
 
 cpu (Fetch2, reg) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where
   DecodedInst{..} = decoded reg
-  (reg', st', wrEn, dO) = run2 reg dataIn 
-  cpuOut = CpuOut {dataOut = dO , addr = pcReg reg', writeEn = wrEn}
+  (reg', st', addr',  wrEn, dO) = run2 reg diAddrMode dataIn 
+  cpuOut = CpuOut {dataOut = dO , addr = addr' , writeEn = wrEn}
+  cpuProbes = probes st' reg'
+
+-- read a 1 byte value
+cpu (Read1, reg) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where
+  (reg', st', addr',  wrEn, dO) = run2 reg AddrImmediate dataIn
+  cpuOut = CpuOut {dataOut = dO , addr = addr' , writeEn = wrEn}
   cpuProbes = probes st' reg'
 
 
@@ -140,14 +147,17 @@ run de@DecodedInst{..} reg@CpuRegisters{..} = (reg', st, wrEn, dOut) where
 
 
 -- Deal with 2 byte instructions
-run2 :: CpuRegisters -> Byte -> (CpuRegisters, State, Bool, Byte)
-run2 reg@CpuRegisters{..} dIn = (reg', st, wrEn, dOut) where 
+run2 :: CpuRegisters -> AddrMode -> Byte -> (CpuRegisters, State, Addr, Bool, Byte)
+run2 reg@CpuRegisters{..} addrMode dIn = (reg', st, addr, wrEn, dOut) where 
   DecodedInst{..} = decoded
   pc' = pcReg + 1
-  (reg', st, wrEn, dOut) = case (diOpType) of
-    (OTLoad) -> ((load reg diReg dIn) {pcReg = pc'}, Fetch1, False, 0)
-    (OTAdc) -> ((adc reg dIn) {pcReg = pc'}, Fetch1, False, 0) 
-    _ -> (reg, Halt, False, 0)
+  (reg', st, addr, wrEn, dOut) = 
+    case (addrMode) of
+      AddrZeroPage -> (reg, Read1, resize dIn, False, 0) 
+      AddrImmediate -> case (diOpType) of
+                         OTLoad -> ((load reg diReg dIn) {pcReg = pc'}, Fetch1, pc', False, 0)
+                         OTAdc -> ((adc reg dIn) {pcReg = pc'}, Fetch1, pc', False, 0) 
+                         _ -> (reg, Halt, pc', False, 0)
 
 
 
