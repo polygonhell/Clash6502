@@ -60,6 +60,8 @@ data State =  Halt
             | Fetch3
             | Read1
             | Write1
+            | FetchAddr1
+            | FetchAddr2
             deriving (Show)
 
 
@@ -173,6 +175,13 @@ cpu (Write1, reg@CpuRegisters{..}) CpuIn{..} = ((st', reg), (cpuOut, cpuProbes))
   cpuOut = CpuOut {dataOut = 0 , addr = pcReg , writeEn = False}
   cpuProbes = probes Write1 st' reg dataIn
 
+-- Fetch Addr from the address in addr
+cpu (FetchAddr1, reg@CpuRegisters{..}) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where
+  st' = Fetch3
+  addr' = resize dataIn
+  reg' = reg { addrReg = addr' }
+  cpuOut = CpuOut {dataOut = 0, addr = addrReg + 1 , writeEn = False} -- Fetch High Byte
+  cpuProbes = probes Fetch3 st' reg' dataIn
 
 cpu (Halt, reg@CpuRegisters{..}) CpuIn{..} = ((Halt, reg), (cpuOut, cpuProbes)) where
   cpuOut = CpuOut {dataOut = 0 , addr = pcReg, writeEn = False}
@@ -201,6 +210,7 @@ run2 reg@CpuRegisters{..} addrMode dIn = (reg', st, addr, wrEn, dOut) where
     case (addrMode) of
       AddrZeroPage -> case (diOpType) of
                          OTStore -> (reg { pcReg = pc' }, Write1, zpAddr, True, regVal reg)
+                         -- ******* TODO Use rewrite to remove read1 State
                          _ -> (reg, Read1, zpAddr, False, 0)  -- Note don't increase PC here because it runs back through Immediate once the fetch is complete
       AddrImmediate -> case (diOpType) of
                          OTLoad -> ((load reg diReg dIn) {pcReg = pc'}, Fetch1, pc', False, 0)
@@ -208,6 +218,7 @@ run2 reg@CpuRegisters{..} addrMode dIn = (reg', st, addr, wrEn, dOut) where
                          _ -> (reg, Halt, pc', False, 0)
       AddrAbsolute -> (reg { pcReg = pc', addrReg = addr'}, Fetch3, pc', False, 0) where
                          addr' = resize dIn -- Low byte of the address
+      AddrIndirect -> (reg { addrReg = zpAddr, decoded = rewriteDecoded decoded}, FetchAddr1, zpAddr, False, 0)     -- Indirect through the address - PC not updated              
 
 
 
@@ -219,11 +230,17 @@ run3 reg@CpuRegisters{..} addrMode dIn = (reg', st, addr, wrEn, dOut) where
   addr'' = computeAddrAbs reg diAddrOffset addr'
   (reg', st, addr, wrEn, dOut) = 
     case (addrMode) of
-      AddrIndirect -> -- Got to get the address from the provided one
-              (reg, Halt, pcReg, False, 0)
+      AddrIndirect -> (reg { addrReg = addr'', decoded = rewriteDecoded decoded }, FetchAddr1, addr'', False, 0)     -- Indirect through the address - PC not updated              
       _ -> case diOpType of
               OTStore -> (reg { pcReg = pc' }, Write1, addr'', True, regVal reg)
               _ ->  (reg, Read1, addr'', False, 0)
+
+
+rewriteDecoded :: DecodedInst -> DecodedInst
+rewriteDecoded (DecodedInst AddrIndirect o OffsetPostAddY r) = DecodedInst AddrAbsolute  o  OffsetPreAddY  r
+rewriteDecoded (DecodedInst AddrIndirect o OffsetPreAddX r) = DecodedInst AddrAbsolute o OffsetNone r
+rewriteDecoded (DecodedInst AddrIndirect o OffsetPreAddY r) = DecodedInst AddrAbsolute o OffsetNone r
+rewriteDecoded (DecodedInst AddrIndirect o off r) = DecodedInst AddrAbsolute o off r
 
 
 
