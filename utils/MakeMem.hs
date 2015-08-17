@@ -22,7 +22,6 @@ romImage baseAddr imageBytes = preBytes ++ imageBytes ++ postBytes ++ vectors wh
   postBytes = (replicate bytesToPad 0x00)
 
 toBinStrings :: [Int] -> [String]
--- toBinStrings bytes = map show bytes
 toBinStrings bytes = map (\x -> printf "%08b" x) bytes
 
 

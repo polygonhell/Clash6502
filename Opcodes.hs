@@ -21,7 +21,7 @@ opLda_ZP_X = [p| 0xb5 |]
 opLda_Abs = [p| 0xad |]
 opLda_Abs_X = [p| 0xbd |]
 opLda_Abs_Y = [p| 0xb9 |]
-
+opLda_Ind_X = [p| 0xa1 |]
 opLda_Ind_Y = [p| 0xb1 |]
 
 opLdx_Imm = [p| 0xa2 |]

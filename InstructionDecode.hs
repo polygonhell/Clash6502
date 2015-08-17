@@ -67,6 +67,7 @@ decode $opLda_ZP_X  = DecodedInst AddrZeroPage OTLoad OffsetPreAddX RegA
 decode $opLda_Abs = DecodedInst AddrAbsolute OTLoad OffsetNone RegA 
 decode $opLda_Abs_X = DecodedInst AddrAbsolute OTLoad OffsetPreAddX RegA 
 decode $opLda_Abs_Y = DecodedInst AddrAbsolute OTLoad OffsetPreAddY RegA 
+decode $opLda_Ind_X = DecodedInst AddrIndirect OTLoad OffsetPreAddX RegA 
 decode $opLda_Ind_Y = DecodedInst AddrIndirect OTLoad OffsetPostAddY RegA 
 
 decode $opLdx_Imm = DecodedInst AddrImmediate OTLoad OffsetNone RegX 

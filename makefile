@@ -77,6 +77,9 @@ junk += vhdl/$(topLevel)
 junk += obj
 
 
+interactive :
+	clash -O -odir obj -hidir obj --interactive $(topLevel)
+
 clean :
 	rm -rf $(junk)
 

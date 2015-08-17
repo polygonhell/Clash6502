@@ -67,6 +67,6 @@ system = probes where
 
 
 -- Note we have to drop 1 because the initial state of dIn is undefined
-runSystem = putStr $ unlines $ L.map (show) $L.drop 1 (sampleN 40 system)
+runSystem = putStr $ unlines $ L.map (show) $L.drop 1 (sampleN 50 system)
 
 

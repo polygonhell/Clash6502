@@ -58,10 +58,8 @@ data State =  Halt
             | Fetch1
             | Fetch2
             | Fetch3
-            | Read1
             | Write1
             | FetchAddr1
-            | FetchAddr2
             deriving (Show)
 
 
@@ -164,10 +162,10 @@ cpu (Fetch3, reg@CpuRegisters{..}) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)
   cpuProbes = probes Fetch3 st' reg dataIn
 
 -- read a 1 byte value
-cpu (Read1, reg) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where
-  (reg', st', addr',  wrEn, dO) = run2 reg AddrImmediate dataIn
-  cpuOut = CpuOut {dataOut = dO , addr = addr' , writeEn = wrEn}
-  cpuProbes = probes Read1 st' reg' dataIn
+-- cpu (Read1, reg) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where
+--   (reg', st', addr',  wrEn, dO) = run2 reg AddrImmediate dataIn
+--   cpuOut = CpuOut {dataOut = dO , addr = addr' , writeEn = wrEn}
+--   cpuProbes = probes Read1 st' reg' dataIn
 
 -- write 1 byte value -- Really this just sets the address for the following Fetch
 cpu (Write1, reg@CpuRegisters{..}) CpuIn{..} = ((st', reg), (cpuOut, cpuProbes)) where
@@ -210,8 +208,7 @@ run2 reg@CpuRegisters{..} addrMode dIn = (reg', st, addr, wrEn, dOut) where
     case (addrMode) of
       AddrZeroPage -> case (diOpType) of
                          OTStore -> (reg { pcReg = pc' }, Write1, zpAddr, True, regVal reg)
-                         -- ******* TODO Use rewrite to remove read1 State
-                         _ -> (reg, Read1, zpAddr, False, 0)  -- Note don't increase PC here because it runs back through Immediate once the fetch is complete
+                         _ -> (reg { decoded = rewriteDecoded decoded }, Fetch2, zpAddr, False, 0)  -- Note don't increase PC here because it runs back through Immediate once the fetch is complete
       AddrImmediate -> case (diOpType) of
                          OTLoad -> ((load reg diReg dIn) {pcReg = pc'}, Fetch1, pc', False, 0)
                          OTAdc -> ((adc reg dIn) {pcReg = pc'}, Fetch1, pc', False, 0) 
@@ -233,7 +230,7 @@ run3 reg@CpuRegisters{..} addrMode dIn = (reg', st, addr, wrEn, dOut) where
       AddrIndirect -> (reg { addrReg = addr'', decoded = rewriteDecoded decoded }, FetchAddr1, addr'', False, 0)     -- Indirect through the address - PC not updated              
       _ -> case diOpType of
               OTStore -> (reg { pcReg = pc' }, Write1, addr'', True, regVal reg)
-              _ ->  (reg, Read1, addr'', False, 0)
+              _ ->  (reg { decoded = rewriteDecoded decoded }, Fetch2, addr'', False, 0)
 
 
 rewriteDecoded :: DecodedInst -> DecodedInst
@@ -241,6 +238,8 @@ rewriteDecoded (DecodedInst AddrIndirect o OffsetPostAddY r) = DecodedInst AddrA
 rewriteDecoded (DecodedInst AddrIndirect o OffsetPreAddX r) = DecodedInst AddrAbsolute o OffsetNone r
 rewriteDecoded (DecodedInst AddrIndirect o OffsetPreAddY r) = DecodedInst AddrAbsolute o OffsetNone r
 rewriteDecoded (DecodedInst AddrIndirect o off r) = DecodedInst AddrAbsolute o off r
+-- We just run the instruction as if it had an Immediate argument after the byte has been fetched
+rewriteDecoded (DecodedInst _ o _ r) = DecodedInst AddrImmediate o OffsetNone r
 
 
 
