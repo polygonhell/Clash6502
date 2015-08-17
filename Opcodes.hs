@@ -36,6 +36,7 @@ opLdy_Abs_X = [p| 0xbc |]
 
 
 opSta_ZP = [p| 0x85 |]
+opSta_Abs = [p| 0x8d |]
 
 
 opAdc_Imm = [p| 0x69 |]

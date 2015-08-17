@@ -81,6 +81,7 @@ decode $opLdy_Abs = DecodedInst AddrAbsolute OTLoad OffsetNone RegY
 decode $opLdy_Abs_X = DecodedInst AddrAbsolute OTLoad OffsetPreAddX RegY 
 
 decode $opSta_ZP = DecodedInst AddrZeroPage OTStore OffsetNone RegA
+decode $opSta_Abs = DecodedInst AddrAbsolute OTStore OffsetNone RegA
 
 decode $opAdc_Imm = DecodedInst AddrImmediate OTAdc OffsetNone RegA
 decode $opAdc_ZP  = DecodedInst AddrZeroPage OTAdc OffsetNone RegA

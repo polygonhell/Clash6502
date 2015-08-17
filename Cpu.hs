@@ -71,7 +71,7 @@ data CpuProbes = CpuProbes
   , prX :: Byte
   , prY :: Byte
   , prFlags :: Byte
-  , prAddr :: Addr
+  , prAddr :: Addr 
   , prDIn :: Byte
   }
 
@@ -99,11 +99,8 @@ data CpuRegisters = CpuRegisters
   , pReg :: Byte
   , spReg :: Byte
   , pcReg :: Addr
-  -- requested address and dataOut
-  , addrReg :: Addr
-  -- , dbReg :: Byte
-  -- current decoded instruction
-  , decoded :: DecodedInst
+  , addrReg :: Addr   -- Used for Indirect addressing 
+  , decoded :: DecodedInst -- current decoded instruction
   } deriving (Show)
 
 
@@ -132,7 +129,7 @@ cpu (FetchPCL, reg@CpuRegisters{..}) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbe
   st' = FetchPCH
   pc' = resize dataIn
   addr' = addrReg + 1
-  reg' = reg {pcReg = pc', addrReg = addr'}
+  reg' = reg {pcReg = pc'}
   cpuOut = CpuOut {dataOut = 0 , addr = addr', writeEn = False}
   cpuProbes = probes FetchPCL st' reg' dataIn
 
@@ -160,12 +157,9 @@ cpu (Fetch2, reg) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where
 -- Low High byte of a 2 byte address -- does not increase PC becasue it happens when the instruction is executed
 cpu (Fetch3, reg@CpuRegisters{..}) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where
   DecodedInst{..} = decoded
-  st' = Read1
-  addr' = (addrReg .|. ((resize dataIn :: Addr) `shiftL` 8))    -- Low read cleared out the upper byte
-  addr'' = computeAddrAbs reg diAddrOffset addr'
-  reg' = reg { addrReg = addr'' }
-  cpuOut = CpuOut {dataOut = 0 , addr = addr'' , writeEn = False}
-  cpuProbes = probes Fetch3 st' reg' dataIn
+  (reg', st', addr',  wrEn, dO) = run3 reg diAddrMode dataIn
+  cpuOut = CpuOut {dataOut = dO , addr = addr' , writeEn = wrEn}
+  cpuProbes = probes Fetch3 st' reg dataIn
 
 -- read a 1 byte value
 cpu (Read1, reg) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where
@@ -173,8 +167,7 @@ cpu (Read1, reg) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where
   cpuOut = CpuOut {dataOut = dO , addr = addr' , writeEn = wrEn}
   cpuProbes = probes Read1 st' reg' dataIn
 
--- write 1 byte value -- this state is unnecessary but it keeps timing consisten with the real CPU
--- Data was commited on the last clock, so we just cycle back to the Fetch state
+-- write 1 byte value -- Really this just sets the address for the following Fetch
 cpu (Write1, reg@CpuRegisters{..}) CpuIn{..} = ((st', reg), (cpuOut, cpuProbes)) where
   st' = Fetch1
   cpuOut = CpuOut {dataOut = 0 , addr = pcReg , writeEn = False}
@@ -182,7 +175,7 @@ cpu (Write1, reg@CpuRegisters{..}) CpuIn{..} = ((st', reg), (cpuOut, cpuProbes))
 
 
 cpu (Halt, reg@CpuRegisters{..}) CpuIn{..} = ((Halt, reg), (cpuOut, cpuProbes)) where
-  cpuOut = CpuOut {dataOut = 0 , addr = addrReg, writeEn = False}
+  cpuOut = CpuOut {dataOut = 0 , addr = pcReg, writeEn = False}
   cpuProbes = probes Halt Halt reg dataIn
 
 
@@ -215,6 +208,25 @@ run2 reg@CpuRegisters{..} addrMode dIn = (reg', st, addr, wrEn, dOut) where
                          _ -> (reg, Halt, pc', False, 0)
       AddrAbsolute -> (reg { pcReg = pc', addrReg = addr'}, Fetch3, pc', False, 0) where
                          addr' = resize dIn -- Low byte of the address
+
+
+
+run3 :: CpuRegisters -> AddrMode -> Byte -> (CpuRegisters, State, Addr, Bool, Byte)
+run3 reg@CpuRegisters{..} addrMode dIn = (reg', st, addr, wrEn, dOut) where 
+  DecodedInst{..} = decoded
+  pc' = pcReg + 1
+  addr' = (addrReg .|. ((resize dIn :: Addr) `shiftL` 8))    -- Low read cleared out the upper byte
+  addr'' = computeAddrAbs reg diAddrOffset addr'
+  (reg', st, addr, wrEn, dOut) = 
+    case (addrMode) of
+      AddrIndirect -> -- Got to get the address from the provided one
+              (reg, Halt, pcReg, False, 0)
+      _ -> case diOpType of
+              OTStore -> (reg { pcReg = pc' }, Write1, addr'', True, regVal reg)
+              _ ->  (reg, Read1, addr'', False, 0)
+
+
+
 
 regVal :: CpuRegisters -> Byte
 regVal CpuRegisters{..}  = v where
