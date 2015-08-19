@@ -43,6 +43,8 @@ data OpType = OTNone
             | OTInterrupt
             | OTStore
             | OTAdc
+            | OTAnd
+            | OTAsl
 
            deriving (Show)
 
@@ -83,7 +85,12 @@ decode $opLdy_Abs = DecodedInst AddrAbsolute OTLoad OffsetNone RegY
 decode $opLdy_Abs_X = DecodedInst AddrAbsolute OTLoad OffsetPreAddX RegY 
 
 decode $opSta_ZP = DecodedInst AddrZeroPage OTStore OffsetNone RegA
+decode $opSta_ZP_X = DecodedInst AddrZeroPage OTStore OffsetPreAddX RegA
 decode $opSta_Abs = DecodedInst AddrAbsolute OTStore OffsetNone RegA
+decode $opSta_Abs_X = DecodedInst AddrAbsolute OTStore OffsetPreAddX RegA
+decode $opSta_Abs_Y = DecodedInst AddrAbsolute OTStore OffsetPreAddY RegA
+decode $opSta_Ind_X = DecodedInst AddrIndirect OTStore OffsetPreAddY RegA
+decode $opSta_Ind_Y = DecodedInst AddrIndirect OTStore OffsetPostAddY RegA
 
 decode $opAdc_Imm = DecodedInst AddrImmediate OTAdc OffsetNone RegA
 decode $opAdc_ZP  = DecodedInst AddrZeroPage OTAdc OffsetNone RegA
@@ -91,6 +98,23 @@ decode $opAdc_ZP_X  = DecodedInst AddrZeroPage OTAdc OffsetPreAddX RegA
 decode $opAdc_Abs = DecodedInst AddrAbsolute OTAdc OffsetNone RegA
 decode $opAdc_Abs_X = DecodedInst AddrAbsolute OTAdc OffsetPreAddX RegA
 decode $opAdc_Abs_Y = DecodedInst AddrAbsolute OTAdc OffsetPreAddY RegA
+decode $opAdc_Ind_X = DecodedInst AddrIndirect OTAdc OffsetPreAddX RegA
+decode $opAdc_Ind_Y = DecodedInst AddrIndirect OTAdc OffsetPostAddY RegA
+
+decode $opAnd_Imm = DecodedInst AddrImmediate OTAnd OffsetNone RegA
+decode $opAnd_ZP  = DecodedInst AddrZeroPage OTAnd OffsetNone RegA
+decode $opAnd_ZP_X  = DecodedInst AddrZeroPage OTAnd OffsetPreAddX RegA
+decode $opAnd_Abs = DecodedInst AddrAbsolute OTAnd OffsetNone RegA
+decode $opAnd_Abs_X = DecodedInst AddrAbsolute OTAnd OffsetPreAddX RegA
+decode $opAnd_Abs_Y = DecodedInst AddrAbsolute OTAnd OffsetPreAddY RegA
+decode $opAnd_Ind_X = DecodedInst AddrIndirect OTAnd OffsetPreAddX RegA
+decode $opAnd_Ind_Y = DecodedInst AddrIndirect OTAnd OffsetPostAddY RegA
+
+decode $opAsl_Acc = DecodedInst AddrNone OTAsl OffsetNone RegA
+decode $opAsl_ZP = DecodedInst AddrZeroPage OTAsl OffsetNone RegNone
+decode $opAsl_ZP_X = DecodedInst AddrZeroPage OTAsl OffsetPreAddX RegNone
+decode $opAsl_Abs = DecodedInst AddrAbsolute OTAsl OffsetNone RegNone
+decode $opAsl_Abs_X = DecodedInst AddrAbsolute OTAsl OffsetPreAddX RegNone
 
 decode a = DecodedInst AddrNone OTInterrupt OffsetNone RegNone
 --trace ("Missing decode for " L.++ (show a)) DecodedInst AddrNone OTInterrupt OffsetNone RegNone

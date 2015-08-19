@@ -29,6 +29,7 @@ zeroFlag  = 0x02 :: Byte
 carryFlag = 0x01 :: Byte
 
 zeroNegMask = complement(negFlag .|. zeroFlag)
+zeroNegCarryMask = complement(negFlag .|. zeroFlag .|. carryFlag)
 zeroNegCarryOverflowMask = complement(negFlag .|. zeroFlag .|. ovFlag .|. carryFlag)
 
 
@@ -194,6 +195,8 @@ run :: DecodedInst -> CpuRegisters -> (CpuRegisters, State, Bool, Byte)
 run de@DecodedInst{..} reg@CpuRegisters{..} = (reg', st, wrEn, dOut) where 
   pc' = pcReg + 1
   (reg', st, wrEn, dOut) = case (diOpType, diAddrMode) of
+    (OTAsl, AddrNone) -> (reg'' { aReg = v, pcReg = pc' }, Fetch1, False, 0) where
+                         (v, reg'') = asl reg aReg
     (OTInterrupt, _) -> (reg, Halt, False, 0)
     (_, _) -> (reg { decoded = de, pcReg = pc'}, Fetch2, False, 0)
 
@@ -208,10 +211,14 @@ run2 reg@CpuRegisters{..} addrMode dIn = (reg', st, addr, wrEn, dOut) where
     case (addrMode) of
       AddrZeroPage -> case (diOpType) of
                          OTStore -> (reg { pcReg = pc' }, Write1, zpAddr, True, regVal reg)
-                         _ -> (reg { decoded = rewriteDecoded decoded }, Fetch2, zpAddr, False, 0)  -- Note don't increase PC here because it runs back through Immediate once the fetch is complete
+                         _ -> (reg { decoded = rewriteDecoded decoded, addrReg = zpAddr}, Fetch2, zpAddr, False, 0)  -- Note don't increase PC here because it runs back through Immediate once the fetch is complete
       AddrImmediate -> case (diOpType) of
                          OTLoad -> ((load reg diReg dIn) {pcReg = pc'}, Fetch1, pc', False, 0)
                          OTAdc -> ((adc reg dIn) {pcReg = pc'}, Fetch1, pc', False, 0) 
+                         OTAnd -> ((andd reg dIn) {pcReg = pc'}, Fetch1, pc', False, 0)
+                         -- **** Test THE ASL VARIANTS **** --
+                         OTAsl -> (reg'' {pcReg = pc'}, Write1, addrReg, True, v) where
+                                  (v, reg'') = asl reg dIn
                          _ -> (reg, Halt, pc', False, 0)
       AddrAbsolute -> (reg { pcReg = pc', addrReg = addr'}, Fetch3, pc', False, 0) where
                          addr' = resize dIn -- Low byte of the address
@@ -230,7 +237,7 @@ run3 reg@CpuRegisters{..} addrMode dIn = (reg', st, addr, wrEn, dOut) where
       AddrIndirect -> (reg { addrReg = addr'', decoded = rewriteDecoded decoded }, FetchAddr1, addr'', False, 0)     -- Indirect through the address - PC not updated              
       _ -> case diOpType of
               OTStore -> (reg { pcReg = pc' }, Write1, addr'', True, regVal reg)
-              _ ->  (reg { decoded = rewriteDecoded decoded }, Fetch2, addr'', False, 0)
+              _ ->  (reg { decoded = rewriteDecoded decoded, addrReg = addr'' }, Fetch2, addr'', False, 0)
 
 
 rewriteDecoded :: DecodedInst -> DecodedInst
@@ -276,6 +283,23 @@ adc regs@CpuRegisters{..} v = regs' where
   overflow = if (((aReg `xor` res) .&. (v `xor` res) .&. 0x80) == 0) then 0 else ovFlag
   flags = (pReg .&. zeroNegCarryOverflowMask) .|. cOut .|. overflow .|. (setZeroAndNeg res)
   regs' = regs {aReg = res, pReg = flags}
+
+andd :: CpuRegisters -> Byte -> CpuRegisters
+andd regs@CpuRegisters{..} v = regs' where
+  res = v .&. aReg
+  flags = (pReg .&. zeroNegMask) .|. (setZeroAndNeg res)
+  regs' = regs {aReg = res, pReg = flags}
+
+-- Not even vaguely cycle accurate
+asl :: CpuRegisters -> Byte -> (Byte, CpuRegisters)
+asl regs@CpuRegisters{..} v = (res, regs') where
+  res = v `shiftL` 1
+  c = v `shiftR` 7
+  flags = (pReg .&. zeroNegCarryMask) .|. (setZeroAndNeg res) .|. c
+  regs' = regs {pReg = flags}
+
+
+
 
 load :: CpuRegisters -> Reg -> Byte -> CpuRegisters
 load regs@CpuRegisters{..} reg v = regs' where

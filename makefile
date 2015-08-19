@@ -78,7 +78,7 @@ junk += obj
 
 
 interactive :
-	clash -O -odir obj -hidir obj --interactive $(topLevel)
+	clash -odir obj -hidir obj --interactive $(topLevel)
 
 clean :
 	rm -rf $(junk)

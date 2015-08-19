@@ -38,7 +38,13 @@ opLdy_Abs_X = [p| 0xbc |]
 
 
 opSta_ZP = [p| 0x85 |]
+opSta_ZP_X = [p| 0x95 |]
 opSta_Abs = [p| 0x8d |]
+opSta_Abs_X = [p| 0x9d |]
+opSta_Abs_Y = [p| 0x99 |]
+opSta_Ind_X = [p| 0x81 |]
+opSta_Ind_Y = [p| 0x91 |]
+
 
 
 opAdc_Imm = [p| 0x69 |]
@@ -47,5 +53,25 @@ opAdc_ZP_X  = [p| 0x75 |]
 opAdc_Abs  = [p| 0x6d |]
 opAdc_Abs_X  = [p| 0x7d |]
 opAdc_Abs_Y  = [p| 0x79 |]
+opAdc_Ind_X  = [p| 0x61 |]
+opAdc_Ind_Y  = [p| 0x71 |]
+
+opAnd_Imm = [p| 0x29 |]
+opAnd_ZP = [p| 0x25 |]
+opAnd_ZP_X = [p| 0x35 |]
+opAnd_Abs = [p| 0x2D |]
+opAnd_Abs_X = [p| 0x3D |]
+opAnd_Abs_Y = [p| 0x39 |]
+opAnd_Ind_X = [p| 0x21 |]
+opAnd_Ind_Y = [p| 0x31 |]
+
+
+
+opAsl_Acc = [p| 0x0A |]
+opAsl_ZP = [p| 0x06 |]
+opAsl_ZP_X = [p| 0x16 |]
+opAsl_Abs = [p| 0x0E |]
+opAsl_Abs_X = [p| 0x1E |]
+
 
 opNop     = [p| 0xea |]
