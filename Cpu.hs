@@ -151,14 +151,14 @@ cpu (Fetch1, reg) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where
 
 cpu (Fetch2, reg) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where
   DecodedInst{..} = decoded reg
-  (reg', st', addr',  wrEn, dO) = run2 reg diAddrMode dataIn 
+  (reg', st', addr',  wrEn, dO) = run2 reg dataIn 
   cpuOut = CpuOut {dataOut = dO , addr = addr' , writeEn = wrEn}
   cpuProbes = probes Fetch2 st' reg' dataIn
 
 -- Low High byte of a 2 byte address -- does not increase PC becasue it happens when the instruction is executed
 cpu (Fetch3, reg@CpuRegisters{..}) CpuIn{..} = ((st', reg'), (cpuOut, cpuProbes)) where
   DecodedInst{..} = decoded
-  (reg', st', addr',  wrEn, dO) = run3 reg diAddrMode dataIn
+  (reg', st', addr',  wrEn, dO) = run3 reg dataIn
   cpuOut = CpuOut {dataOut = dO , addr = addr' , writeEn = wrEn}
   cpuProbes = probes Fetch3 st' reg dataIn
 
@@ -202,13 +202,13 @@ run de@DecodedInst{..} reg@CpuRegisters{..} = (reg', st, wrEn, dOut) where
 
 
 -- Deal with instructions that consume data
-run2 :: CpuRegisters -> AddrMode -> Byte -> (CpuRegisters, State, Addr, Bool, Byte)
-run2 reg@CpuRegisters{..} addrMode dIn = (reg', st, addr, wrEn, dOut) where 
+run2 :: CpuRegisters -> Byte -> (CpuRegisters, State, Addr, Bool, Byte)
+run2 reg@CpuRegisters{..} dIn = (reg', st, addr, wrEn, dOut) where 
   DecodedInst{..} = decoded
   pc' = pcReg + 1
   zpAddr = computeAddrZP reg diAddrOffset dIn -- computed address for potential ZP access
   (reg', st, addr, wrEn, dOut) = 
-    case (addrMode) of
+    case (diAddrMode) of
       AddrZeroPage -> case (diOpType) of
                          OTStore -> (reg { pcReg = pc' }, Write1, zpAddr, True, regVal reg)
                          _ -> (reg { decoded = rewriteDecoded decoded, addrReg = zpAddr}, Fetch2, zpAddr, False, 0)  -- Note don't increase PC here because it runs back through Immediate once the fetch is complete
@@ -226,14 +226,14 @@ run2 reg@CpuRegisters{..} addrMode dIn = (reg', st, addr, wrEn, dOut) where
 
 
 
-run3 :: CpuRegisters -> AddrMode -> Byte -> (CpuRegisters, State, Addr, Bool, Byte)
-run3 reg@CpuRegisters{..} addrMode dIn = (reg', st, addr, wrEn, dOut) where 
+run3 :: CpuRegisters -> Byte -> (CpuRegisters, State, Addr, Bool, Byte)
+run3 reg@CpuRegisters{..} dIn = (reg', st, addr, wrEn, dOut) where 
   DecodedInst{..} = decoded
   pc' = pcReg + 1
   addr' = (addrReg .|. ((resize dIn :: Addr) `shiftL` 8))    -- Low read cleared out the upper byte
   addr'' = computeAddrAbs reg diAddrOffset addr'
   (reg', st, addr, wrEn, dOut) = 
-    case (addrMode) of
+    case (diAddrMode) of
       AddrIndirect -> (reg { addrReg = addr'', decoded = rewriteDecoded decoded }, FetchAddr1, addr'', False, 0)     -- Indirect through the address - PC not updated              
       _ -> case diOpType of
               OTStore -> (reg { pcReg = pc' }, Write1, addr'', True, regVal reg)
