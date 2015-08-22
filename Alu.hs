@@ -107,7 +107,7 @@ data CpuState = CpuState
   , rSp :: Byte
   , rPC :: Addr
   , rAddr :: Addr   -- Used for Indirect addressing 
-  -- Need some thing for current addressing mode and pending adjustment
+  -- The "decoded" instruction, is modified by the state machine as the address modes are "unwound"
   , rAluOp :: AluOp
   , rAddrMode :: AddrMode
   , rAddrOp :: AddrOp
@@ -169,12 +169,14 @@ adcNorm flags a b = (res, flags') where
     overflow = if (((a `xor` res) .&. (b `xor` res) .&. 0x80) == 0) then 0 else ovFlag
     flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. cOut
 
+-- TODO need to test BCD implementation
 adcBCD :: Byte -> Byte -> Byte -> (Byte, Byte)
 adcBCD flags a b = (res, flags') where
     cIn = resize (flags .&. carryFlag) :: Unsigned 5
     lowO = (resize a :: Unsigned 5) + (resize b :: Unsigned 5) + cIn
     (lowCout, lowO') = if lowO > 9 then (1, lowO + 6) else (0, lowO) :: (Unsigned 5, Unsigned 5)
-    highO = (resize (a `shiftR` 4) :: Unsigned 5) + (resize (a `shiftR` 4) :: Unsigned 5) + lowCout
+
+    highO = (resize (a `shiftR` 4) :: Unsigned 5) + (resize (b `shiftR` 4) :: Unsigned 5) + lowCout
     (highCout, highO') = if highO > 9 then (carryFlag, highO + 6) else (0, highO)
     res = ((resize highO' :: Unsigned 8) `shiftL` 4) .|. (resize lowO' :: Unsigned 8)
     -- Overflow not documented for the original 6502, but basically set as if for the last nibble calculation in standard ADC case
@@ -201,9 +203,28 @@ sbcNorm flags a b = (res, flags') where
     flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. cOut
 
 
+-- TODO need to test BCD implementation
 sbcBCD :: Byte -> Byte -> Byte -> (Byte, Byte)
 sbcBCD flags a b = (res, flags') where
-  (res, flags') = (0,0)
+  cIn = resize ((complement flags) .&. carryFlag) :: Unsigned 5
+  lowO = (resize a :: Unsigned 5) - (resize b :: Unsigned 5) - cIn
+  (lowCout, lowO') = if lowO > 9 then (0, lowO - 6) else (1, lowO) :: (Unsigned 5, Unsigned 5) --  Inverted carry
+
+  highO = (resize (a `shiftR` 4) :: Unsigned 5) - (resize (b `shiftR` 4) :: Unsigned 5) - lowCout
+  (highCout, highO') = if highO > 9 then (carryFlag, highO - 6) else (0, highO) -- correct Carry
+  res = ((resize highO' :: Unsigned 8) `shiftL` 4) .|. (resize lowO' :: Unsigned 8)
+  -- Overflow not documented for the original 6502, but basically set as if for the last nibble calculation in standard SBC case
+  highOO = (resize highO :: Unsigned 8) `shiftL` 4
+  overflow = if ((a `xor` highOO) .&. (b `xor` highOO) .&. 0x80) == 0 then 0 else ovFlag
+  flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. highCout
+
+
+
+
+
+
+
+
 
 
 

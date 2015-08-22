@@ -53,9 +53,10 @@ pRegString :: Byte -> String
 pRegString v = res where
   c = if (v .&. carryFlag) /= 0 then "C" else "c" 
   z = if (v .&. zeroFlag) /= 0 then "Z" else "z" 
+  d = if (v .&. decFlag) /= 0 then "D" else "d" 
   o = if (v .&. ovFlag) /= 0 then "O" else "o" 
   n = if (v .&. negFlag) /= 0 then "N" else "n" 
-  res = n L.++ o L.++ z L.++ c 
+  res = n L.++ o L.++ d L.++ z L.++ c 
 
 
 
