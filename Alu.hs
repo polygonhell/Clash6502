@@ -185,7 +185,13 @@ sbc flags a b  = (v, flags') where
 
 sbcNorm :: Byte -> Byte -> Byte -> (Byte, Byte)
 sbcNorm flags a b = (res, flags') where
-  (res, flags') = (0,0)
+    cIn = (complement flags) .&. carryFlag -- SBC needs the inverted carry
+    res9 = (resize a :: Unsigned 9) - (resize b :: Unsigned 9) - (resize cIn :: Unsigned 9)
+    res = resize res9
+    cOut = resize (res9 `shiftR` 8) :: Unsigned 8
+    overflow = if (((a `xor` res) .&. (b `xor` res) .&. 0x80) == 0) then 0 else ovFlag
+    flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. cOut
+
 
 sbcBCD :: Byte -> Byte -> Byte -> (Byte, Byte)
 sbcBCD flags a b = (res, flags') where
