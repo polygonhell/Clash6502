@@ -13,7 +13,8 @@ import CLaSH.Promoted.Nat
 
 import Types
 import SevenSeg
-import Cpu
+-- import Cpu
+import Cpu2
 import qualified Data.List as L
 
 -- declare d65536
@@ -59,11 +60,17 @@ testRAMContents = (0x1:>0x2:>0x3:>0x4:>0x05 :> Nil) ++
 
 
 
-system :: Signal CpuProbes
+-- system :: Signal CpuProbes
+-- system = probes where
+--   (out, probes) = unbundle $ cpuA $ (CpuIn <$> din)
+--   adr = (resize . addr) <$> out :: Signal (Unsigned 16)
+--   din = ram64K adr (writeEn <$> out) (dataOut <$> out)
+
+system :: Signal Probes
 system = probes where
-  (out, probes) = unbundle $ cpuA $ (CpuIn <$> din)
+  (out, probes) = unbundle $ cpuM $ (CpuIn <$> din)
   adr = (resize . addr) <$> out :: Signal (Unsigned 16)
-  din = ram64K adr (writeEn <$> out) (dataOut <$> out)
+  din = ram64K adr (writeEn <$> out) (dOut <$> out)
 
 
 -- Note we have to drop 1 because the initial state of dIn is undefined
