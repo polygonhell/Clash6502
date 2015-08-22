@@ -167,7 +167,7 @@ addressCalc CpuState{..} base = case rAddrOp of
 
 writesToAddress :: AluOp -> Bool
 writesToAddress STA = True
-_ = False
+writesToAddress _ = False
 
 
 getAddr :: CpuState -> Addr

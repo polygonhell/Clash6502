@@ -9,6 +9,8 @@ module Alu where
 
 import CLaSH.Prelude
 import CLaSH.Sized.Unsigned
+import Debug.Trace
+import Text.Printf
 
 import Types
 
@@ -115,13 +117,80 @@ execNoData st@CpuState{..} = (st', addr) where
 execWithData :: CpuState -> Byte -> Addr -> (CpuState, Addr, Byte, Bool)
 execWithData st@CpuState{..} v addrIn = (st', addr, oByte, wr) where
   pc' = rPC+1
-  zn = setZN rFlags v
   (st', addr, oByte, wr) = case rAluOp of
-    LDA -> (st {state = FetchI, rA = v, rFlags = zn, rPC= pc'}, pc', 0, False)
-    _ -> (st {state = Halt}, rPC, 0, False) 
+    STA -> (st {state = WriteByte, rPC = pc'}, addrIn, rA, True)
+    LDA -> (st {state = FetchI, rA = v, rFlags = setZN rFlags v, rPC= pc'}, pc', 0, False)
+    EOR -> logicOp st v xor 
+    ORA -> logicOp st v (.|.)
+    AND -> logicOp st v (.&.)
+    ADC -> (st {state = FetchI, rA = v', rFlags = flags', rPC = pc'}, pc', 0, False) where
+      (v', flags) = adc rFlags rA v
+      flags' = setZN flags v'
+    SBC -> (st {state = FetchI, rA = v', rFlags = flags', rPC = pc'}, pc', 0, False) where
+      (v', flags) = sbc rFlags rA v
+      flags' = setZN flags v'
+
+
+    _ -> trace (printf "Unsupported AluOp %s" (show rAluOp)) (st {state = Halt}, rPC, 0, False) 
+
+logicOp :: CpuState -> Byte -> (Byte -> Byte -> Byte) -> (CpuState, Addr, Byte, Bool)
+logicOp st@CpuState{..} v fn = (st {state = FetchI, rA = v', rFlags = flags, rPC = pc'}, pc', 0, False) where
+    pc' = rPC+1
+    v' = fn rA v 
+    flags = setZN rFlags v'
 
 setZN :: Byte -> Byte -> Byte
 setZN f v = (f .&. (complement (negFlag .|. zeroFlag))) .|. z .|. n where
   n = v .&. negFlag
   z = if v == 0 then zeroFlag else 0
+
+-- Do the add set the OV and C flags
+adc :: Byte -> Byte -> Byte -> (Byte, Byte)
+adc flags a b  = (v, flags') where
+  (v, flags') = if (flags .&. decFlag == 0) then
+    adcNorm flags a b
+  else
+    adcBCD flags a b
+
+adcNorm :: Byte -> Byte -> Byte -> (Byte, Byte)
+adcNorm flags a b = (res, flags') where
+    cIn = flags .&. carryFlag
+    res9 = (resize cIn :: Unsigned 9) + (resize a :: Unsigned 9) + (resize b :: Unsigned 9)
+    res = resize res9
+    cOut = resize (res9 `shiftR` 8) :: Unsigned 8
+    overflow = if (((a `xor` res) .&. (b `xor` res) .&. 0x80) == 0) then 0 else ovFlag
+    flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. cOut
+
+adcBCD :: Byte -> Byte -> Byte -> (Byte, Byte)
+adcBCD flags a b = (res, flags') where
+    cIn = resize (flags .&. carryFlag) :: Unsigned 5
+    lowO = (resize a :: Unsigned 5) + (resize b :: Unsigned 5) + cIn
+    (lowCout, lowO') = if lowO > 9 then (1, lowO + 6) else (0, lowO) :: (Unsigned 5, Unsigned 5)
+    highO = (resize (a `shiftR` 4) :: Unsigned 5) + (resize (a `shiftR` 4) :: Unsigned 5) + lowCout
+    (highCout, highO') = if highO > 9 then (carryFlag, highO + 6) else (0, highO)
+    res = ((resize highO' :: Unsigned 8) `shiftL` 4) .|. (resize lowO' :: Unsigned 8)
+    -- Overflow not documented for the original 6502, but basically set as if for the last nibble calculation in standard ADC case
+    highOO = (resize highO :: Unsigned 8) `shiftL` 4
+    overflow = if ((a `xor` highOO) .&. (b `xor` highOO) .&. 0x80) == 0 then 0 else ovFlag
+    flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. highCout
+
+
+-- Do the sub set the OV and C flags
+sbc :: Byte -> Byte -> Byte -> (Byte, Byte)
+sbc flags a b  = (v, flags') where
+  (v, flags') = if (flags .&. decFlag == 0) then
+    sbcNorm flags a b
+  else
+    sbcBCD flags a b
+
+sbcNorm :: Byte -> Byte -> Byte -> (Byte, Byte)
+sbcNorm flags a b = (res, flags') where
+  (res, flags') = (0,0)
+
+sbcBCD :: Byte -> Byte -> Byte -> (Byte, Byte)
+sbcBCD flags a b = (res, flags') where
+  (res, flags') = (0,0)
+
+
+
 

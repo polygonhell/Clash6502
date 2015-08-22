@@ -1,29 +1,34 @@
 *= $200
-
-lda #67
-sta $301
-
-lda #$0
-sta $05
-
-lda #$03
-sta $06
-
-lda #$01
-sta $07
-
-lda #$03
-sta $08
+        lda #<Label1
+        sta $20
+        lda #>Label1
+        sta $21
 
 
-ldy #1
+        lda #$a5
+        sta *$08
+        lda #$5a
+        sta *$09
+        lda #$ff
+        sta *$0a
+        lda #$0
+        sta *$0b
 
-lda ($05),y
+        lda #$0  
+        eor *$08
+        eor $09
+        eor ($20,X)
+        eor ($20),Y
 
-adc $06
+        adc #$3
+        adc #$20
+        adc #$7f
+        adc #$7f
 
-ldx #$02
-lda ($05, x)
+        lda #$0
+        rts
 
-lda #$00
+Label1
+        .Byte $12
 
+.end
