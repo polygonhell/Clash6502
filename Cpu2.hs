@@ -127,7 +127,7 @@ cpu st@CpuState{..} CpuIn{..} = (st', (out, probes)) where
                   -- Need to indirect Addr mode must be ABS or ABSInd at this point
                   | rAddrMode == Abs = (st {state = FetchL, rAddrMode = Imm}, cAddr, 0, False)
                   -- AbsInd only happens for JSR
-                  | rAddrMode == AbsInd = (st {state = ReadAddr, rAddr = cAddr, rAddrMode = m, rAddrOp = ao}, cAddr, 0, False)
+                  | otherwise = (st {state = ReadAddr, rAddr = cAddr, rAddrMode = m, rAddrOp = ao}, cAddr, 0, False)
 
                 canExecute :: AluOp -> AddrMode -> Bool
                 canExecute _ Imm = True
@@ -156,6 +156,8 @@ computeAddress st@CpuState{..} dIn = case rAddrMode of
   ZpInd -> resize $ addressCalc st dIn
   Abs -> addressCalc st rAddr
   AbsInd -> addressCalc st rAddr
+  _ -> addressCalc st rAddr
+
 
 addressCalc :: forall n . (KnownNat n) => CpuState -> Unsigned n -> Unsigned n
 addressCalc CpuState{..} base = case rAddrOp of

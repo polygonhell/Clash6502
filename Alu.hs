@@ -39,6 +39,8 @@ addrMode 1 5 _ = (Zp, AOPreAddX)
 addrMode 1 6 _ = (Abs, AOPreAddY)
 addrMode 1 7 _ = (Abs, AOPreAddX)
 
+addrMode _ _ _ = (Imm, AONone)
+
 
 data AluOp = ORA
            | AND
@@ -62,6 +64,8 @@ aluOp 1 _ 4 = STA
 aluOp 1 _ 5 = LDA
 aluOp 1 _ 6 = CMP
 aluOp 1 _ 7 = SBC
+
+aluOp _ _ _ = ILLEGAL
 
 
 decodeInstruction :: CpuState -> Byte -> CpuState
@@ -134,7 +138,8 @@ execWithData st@CpuState{..} v addrIn = (st', addr, oByte, wr) where
       flags' = setZN flags v'
 
 
-    _ -> trace (printf "Unsupported AluOp %s" (show rAluOp)) (st {state = Halt}, rPC, 0, False) 
+    -- _ -> trace (printf "Unsupported AluOp %s" (show rAluOp)) (st {state = Halt}, rPC, 0, False) 
+    _ -> (st {state = Halt}, rPC, 0, False) 
 
 logicOp :: CpuState -> Byte -> (Byte -> Byte -> Byte) -> (CpuState, Addr, Byte, Bool)
 logicOp st@CpuState{..} v fn = (st {state = FetchI, rA = v', rFlags = flags, rPC = pc'}, pc', 0, False) where
