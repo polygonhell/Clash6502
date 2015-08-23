@@ -91,12 +91,12 @@ cpu st@CpuState{..} CpuIn{..} = (st', (out, probes)) where
 
     -- Read and decode the instruction - execute single byte instructions
     -- PC always advanced             
-    FetchI -> (st'', CpuOut 0 addr False) where
+    FetchI -> (st'', CpuOut oByte addr wr) where
                 pc' = rPC+1
                 stp = decodeInstruction st dIn
-                (st'', addr) = case getAddrMode stp of
-                  Implicit -> execNoData stp
-                  _ -> (stp {rPC = pc', state = FetchL }, pc')
+                (st'', addr, oByte, wr) = case getAddrMode stp of
+                  Implicit -> execWithData stp 0 0
+                  _ -> (stp {rPC = pc', state = FetchL }, pc', 0, False)
 
     -- Low data byte ready
     -- Can execute anything that doesn't require indirection through that byte
@@ -108,7 +108,7 @@ cpu st@CpuState{..} CpuIn{..} = (st', (out, probes)) where
                   | canExecute rAluOp rAddrMode = execWithData st dIn cAddr
                   -- Some indirection required -- pc not incremented, until instruction executed
                   -- just read the byte from the supplied address and rerun this state as if it were Immediate
-                  | rAddrMode == Zp = (st {state = FetchL, rAddrMode = Imm}, cAddr, 0, False)
+                  | rAddrMode == Zp = (st {state = FetchL, rAddrMode = Imm, rAddr = cAddr}, cAddr, 0, False)
                   -- Read the 16 bit address
                   | rAddrMode == ZpInd = (st {state = ReadAddr, rAddr = cAddr, rAddrMode = m, rAddrOp = ao}, cAddr, 0, False)                                           
                   -- Have to fetch a 3rd instructionByte -- Store low byte of final 16 bit value in addr
@@ -126,7 +126,7 @@ cpu st@CpuState{..} CpuIn{..} = (st', (out, probes)) where
                 (st'', addr, oByte, wr)  
                   | canExecute rAluOp rAddrMode = execWithData st dIn cAddr
                   -- Need to indirect Addr mode must be ABS or ABSInd at this point
-                  | rAddrMode == Abs = (st {state = FetchL, rAddrMode = Imm}, cAddr, 0, False)
+                  | rAddrMode == Abs = (st {state = FetchL, rAddrMode = Imm, rAddr = cAddr}, cAddr, 0, False)
                   -- AbsInd only happens for JSR
                   | otherwise = (st {state = ReadAddr, rAddr = cAddr, rAddrMode = m, rAddrOp = ao}, cAddr, 0, False)
 
@@ -157,8 +157,7 @@ computeAddress st@CpuState{..} dIn = case rAddrMode of
   ZpInd -> resize $ addressCalc st dIn
   Abs -> addressCalc st rAddr
   AbsInd -> addressCalc st rAddr
-  _ -> addressCalc st rAddr
-
+  _ -> rAddr
 
 addressCalc :: forall n . (KnownNat n) => CpuState -> Unsigned n -> Unsigned n
 addressCalc CpuState{..} base = case rAddrOp of

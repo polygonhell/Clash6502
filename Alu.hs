@@ -179,11 +179,31 @@ execWithData st@CpuState{..} v addrIn = (st', addr, oByte, wr) where
       flags' = setZN flags v'
     CMP -> (st {state = FetchI, rFlags = flags', rPC = pc'}, pc', 0, False) where
       flags' = cmp rFlags rA v
+    ASL -> shiftOp st addrIn v (\x -> shiftL x 1) True
 
 
 
     -- _ -> trace (printf "Unsupported AluOp %s" (show rAluOp)) (st {state = Halt}, rPC, 0, False) 
     _ -> (st {state = Halt}, rPC, 0, False) 
+
+shiftOp :: CpuState -> Addr -> Byte -> (Byte -> Byte) -> Bool -> (CpuState, Addr, Byte, Bool)
+shiftOp st@CpuState{..} addrIn v fn leftShift = (st', addr, oByte, wr) where
+  pc' = rPC+1
+  (st', addr, oByte, wr) = case rAddrMode of
+    Implicit -> (st {state = FetchI, rA = v', rFlags = flags', rPC = pc'}, pc', 0,  False) where
+      (v', flags') = doShiftOp rFlags rA fn leftShift
+    _ -> (st {state = WriteByte, rFlags = flags', rPC = pc'}, addrIn, v', True) where
+      (v', flags') = doShiftOp rFlags v fn leftShift
+
+doShiftOp :: Byte -> Byte -> (Byte -> Byte) -> Bool -> (Byte, Byte)
+doShiftOp f a fn leftShift = (v, flags) where
+  v = fn a
+  flags' = setZN f v
+  carryBit = if leftShift then 0x80 else 0x01 :: Unsigned 8
+  carry = if (a .&. carryBit) == 0 then 0 else carryFlag
+  flags = (flags' .&. (complement carryFlag)) .|. carry
+
+
 
 logicOp :: CpuState -> Byte -> (Byte -> Byte -> Byte) -> (CpuState, Addr, Byte, Bool)
 logicOp st@CpuState{..} v fn = (st {state = FetchI, rA = v', rFlags = flags, rPC = pc'}, pc', 0, False) where
