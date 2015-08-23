@@ -180,11 +180,37 @@ execWithData st@CpuState{..} v addrIn = (st', addr, oByte, wr) where
     CMP -> (st {state = FetchI, rFlags = flags', rPC = pc'}, pc', 0, False) where
       flags' = cmp rFlags rA v
     ASL -> shiftOp st addrIn v (\x -> shiftL x 1) True
+    ROL -> shiftOp st addrIn v rolFn True where
+      rolFn x = (x `shiftL` 1) .|. (rFlags .&. carryFlag)  -- Shifts in from carry
+    LSR -> shiftOp st addrIn v (\x -> shiftR x 1) False
+    ROR -> shiftOp st addrIn v rolFn False where
+      rolFn x = (x `shiftR` 1) .|. (rFlags `shiftL` 7)  -- Shifts in from carry
+    STX -> (st {state = WriteByte, rPC = pc'}, addrIn, rX, True)
+    LDX -> (st {state = FetchI, rX = v, rFlags = setZN rFlags v, rPC= pc'}, pc', 0, False)
+    TAX -> (st {state = FetchI, rX = rA, rFlags = setZN rFlags v, rPC= pc'}, pc', 0, False)
+    TXA -> (st {state = FetchI, rA = rX, rFlags = setZN rFlags v, rPC= pc'}, pc', 0, False)
+    DEC -> memOp st addrIn v (\x -> x-1)
+    INC -> memOp st addrIn v (\x -> x+1)
+
 
 
 
     -- _ -> trace (printf "Unsupported AluOp %s" (show rAluOp)) (st {state = Halt}, rPC, 0, False) 
     _ -> (st {state = Halt}, rPC, 0, False) 
+
+
+
+memOp :: CpuState -> Addr -> Byte -> (Byte -> Byte) -> (CpuState, Addr, Byte, Bool)
+memOp st@CpuState{..} addrIn v fn = (st', addr, oByte, wr) where
+  pc' = rPC+1
+  (st', addr, oByte, wr) = case rAddrMode of
+    Implicit -> (st {state = FetchI, rA = v', rFlags = setZN rFlags v', rPC = pc'}, pc', 0,  False) where
+      v' = fn rA
+    _ -> (st {state = WriteByte, rFlags = setZN rFlags v', rPC = pc'}, addrIn, v', True) where
+      v' = fn v
+
+
+
 
 shiftOp :: CpuState -> Addr -> Byte -> (Byte -> Byte) -> Bool -> (CpuState, Addr, Byte, Bool)
 shiftOp st@CpuState{..} addrIn v fn leftShift = (st', addr, oByte, wr) where
@@ -291,7 +317,6 @@ cmp flags a b = flags' where
   c = if a >= b then carryFlag else 0
   z = if t == 0 then zeroFlag else 0
   flags' = (flags .&. (complement (carryFlag .|. negFlag .|. zeroFlag))) .|. neg .|. c .|. z
-
 
 
 
