@@ -39,7 +39,19 @@ addrMode 1 5 _ = (Zp, AOPreAddX)
 addrMode 1 6 _ = (Abs, AOPreAddY)
 addrMode 1 7 _ = (Abs, AOPreAddX)
 
-addrMode _ _ _ = (Imm, AONone)
+addrMode 2 0 5 = (Imm, AONone)
+addrMode 2 1 _ = (Zp, AONone)
+
+addrMode 2 2 _ = (Implicit, AONone)
+
+addrMode 2 3 4 = (Implicit, AONone) -- Not defined in this group
+addrMode 2 3 _ = (Abs, AONone)
+-- addrMode 2 4 _ = (Zp, AONone)
+addrMode 2 5 _ = (Zp, AOPreAddX)
+-- addrMode 2 6 _ = (Zp, AOPreAddX)
+addrMode 2 7 _ = (Abs, AOPreAddX)
+
+addrMode _ _ _ = (Implicit, AONone)
 
 
 data AluOp = ORA
@@ -51,6 +63,16 @@ data AluOp = ORA
            | CMP
            | SBC
            | BIT
+           | ASL
+           | ROL
+           | LSR
+           | ROR
+           | STX
+           | LDX
+           | DEC
+           | INC
+           | TXA
+           | TAX
            | ILLEGAL
            deriving (Show, Eq)
 
@@ -64,6 +86,25 @@ aluOp 1 _ 4 = STA
 aluOp 1 _ 5 = LDA
 aluOp 1 _ 6 = CMP
 aluOp 1 _ 7 = SBC
+
+aluOp 2 0 0 = ILLEGAL
+aluOp 2 _ 0 = ASL
+aluOp 2 0 1 = ILLEGAL
+aluOp 2 _ 1 = ROL
+aluOp 2 0 2 = ILLEGAL
+aluOp 2 _ 2 = LSR
+aluOp 2 0 3 = ILLEGAL
+aluOp 2 _ 3 = ROR
+aluOp 2 0 4 = ILLEGAL
+aluOp 2 2 4 = TXA
+aluOp 2 7 4 = ILLEGAL
+aluOp 2 _ 4 = STX
+aluOp 2 2 5 = TAX
+aluOp 2 _ 5 = LDX
+aluOp 2 0 6 = ILLEGAL
+aluOp 2 _ 6 = DEC
+aluOp 2 0 7 = ILLEGAL
+aluOp 2 _ 7 = INC
 
 aluOp _ _ _ = ILLEGAL
 
@@ -136,6 +177,9 @@ execWithData st@CpuState{..} v addrIn = (st', addr, oByte, wr) where
     SBC -> (st {state = FetchI, rA = v', rFlags = flags', rPC = pc'}, pc', 0, False) where
       (v', flags) = sbc rFlags rA v
       flags' = setZN flags v'
+    CMP -> (st {state = FetchI, rFlags = flags', rPC = pc'}, pc', 0, False) where
+      flags' = cmp rFlags rA v
+
 
 
     -- _ -> trace (printf "Unsupported AluOp %s" (show rAluOp)) (st {state = Halt}, rPC, 0, False) 
@@ -219,6 +263,14 @@ sbcBCD flags a b = (res, flags') where
   flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. highCout
 
 
+
+cmp :: Byte -> Byte -> Byte -> Byte
+cmp flags a b = flags' where
+  t = a - b
+  neg = t .&. 0x80
+  c = if a >= b then carryFlag else 0
+  z = if t == 0 then zeroFlag else 0
+  flags' = (flags .&. (complement (carryFlag .|. negFlag .|. zeroFlag))) .|. neg .|. c .|. z
 
 
 
