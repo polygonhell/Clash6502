@@ -217,12 +217,20 @@ execWithData st@CpuState{..} v addrIn = (st', addr, oByte, wr) where
     TXA -> (st {state = FetchI, rA = rX, rFlags = setZN rFlags v, rPC= pc'}, pc', 0, False)
     DEC -> memOp st addrIn v (\x -> x-1)
     INC -> memOp st addrIn v (\x -> x+1)
-
-
-
+    BIT -> (st {state = FetchI, rFlags = bitFlags rFlags rA v, rPC = pc'}, pc', 0, False)
 
     -- _ -> trace (printf "Unsupported AluOp %s" (show rAluOp)) (st {state = Halt}, rPC, 0, False) 
     _ -> (st {state = Halt}, rPC, 0, False) 
+
+
+
+bitFlags :: Byte -> Byte -> Byte -> Byte
+bitFlags f a v = f' where
+  t = a .&. v
+  vF = a .&. 0x40
+  f'' = setZN f t 
+  f' = (f'' .&. (complement ovFlag)) .|. vF
+
 
 
 {-# NOINLINE memOp #-}
