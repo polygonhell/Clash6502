@@ -39,6 +39,8 @@ $(working)/$(topLevel).prj: vhdl/$(topLevel)/$(topLevel).vhdl Makefile
 $(working)/$(topLevel).scr: Makefile 
 	test -d $(working) || mkdir $(working)
 	echo "run" > $@
+	echo "-opt_mode area" >> $@
+	echo "-opt_level 2" >> %@
 	echo "-p $(part)" >> $@
 	echo "-top $(topLevel)" >> $@
 	echo "-ifn $(topLevel).prj" >> $@
@@ -72,7 +74,7 @@ $(working)/$(topLevel).bit: $(working)/$(topLevel)_par.ncd
 # Create the VHDL files
 vhdl/$(topLevel)/$(topLevel).vhdl : $(topLevel).hs Makefile
 	rm -rf vhdl/$(topLevel)
-	clash -O -odir obj -hidir obj --vhdl $(topLevel)
+	clash -odir obj -hidir obj --vhdl $(topLevel)
 junk += vhdl/$(topLevel)
 junk += obj
 

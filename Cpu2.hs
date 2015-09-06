@@ -77,6 +77,7 @@ resetVec = 0xfffc
 
 cpuM = cpu `mealy` initialState
 
+{-# NOINLINE cpu #-}
 cpu :: CpuState -> CpuIn -> (CpuState, (CpuOut, Probes))
 cpu st@CpuState{..} CpuIn{..} = (st', (out, probes)) where
   state' = getState st'

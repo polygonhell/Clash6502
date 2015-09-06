@@ -28,8 +28,15 @@ data AddrOp = AONone
             | AOPostAddY
             deriving (Show, Eq)
 
-
+{-# NOINLINE addrMode #-}
 addrMode :: Unsigned 2 -> Unsigned 3 -> Unsigned 3 -> (AddrMode, AddrOp)
+addrMode 0 0 _ = (Imm, AONone) 
+addrMode 0 1 _ = (Zp, AONone) 
+addrMode 0 3 3 = (AbsInd, AONone) -- JMP (ABS)
+addrMode 0 3 _ = (Abs, AONone) 
+addrMode 0 5 _ = (Zp, AOPreAddX) 
+addrMode 0 7 _ = (Abs, AOPreAddX) 
+
 addrMode 1 0 _ = (ZpInd, AOPreAddX)
 addrMode 1 1 _ = (Zp, AONone)
 addrMode 1 2 _ = (Imm, AONone)
@@ -73,40 +80,58 @@ data AluOp = ORA
            | INC
            | TXA
            | TAX
+           | JMP
+           | STY
+           | LDY
+           | CPY
+           | CPX
            | ILLEGAL
            deriving (Show, Eq)
 
+{-# NOINLINE aluOp #-}
 aluOp :: Unsigned 2 -> Unsigned 3 -> Unsigned 3 -> AluOp
-aluOp 1 _ 0 = ORA
-aluOp 1 _ 1 = AND
-aluOp 1 _ 2 = EOR
-aluOp 1 _ 3 = ADC
-aluOp 1 2 4 = BIT  -- Store Immediate is mising -- it's BIT # on 65C02
-aluOp 1 _ 4 = STA
-aluOp 1 _ 5 = LDA
-aluOp 1 _ 6 = CMP
-aluOp 1 _ 7 = SBC
+aluOp 0 addrBits opBits = case opBits of
+  1 -> BIT
+  2 -> JMP
+  3 -> JMP
+  4 -> STY
+  5 -> LDY
+  6 -> CPY
+  7 -> CPX
+  _ -> ILLEGAL
 
-aluOp 2 0 0 = ILLEGAL
-aluOp 2 _ 0 = ASL
-aluOp 2 0 1 = ILLEGAL
-aluOp 2 _ 1 = ROL
-aluOp 2 0 2 = ILLEGAL
-aluOp 2 _ 2 = LSR
-aluOp 2 0 3 = ILLEGAL
-aluOp 2 _ 3 = ROR
-aluOp 2 0 4 = ILLEGAL
-aluOp 2 2 4 = TXA
-aluOp 2 7 4 = ILLEGAL
-aluOp 2 _ 4 = STX
-aluOp 2 2 5 = TAX
-aluOp 2 _ 5 = LDX
-aluOp 2 0 6 = ILLEGAL
-aluOp 2 _ 6 = DEC
-aluOp 2 0 7 = ILLEGAL
-aluOp 2 _ 7 = INC
+aluOp 1 addrBits opBits = case opBits of
+  0 -> ORA
+  1 -> AND
+  2 -> EOR
+  3 -> ADC
+  4 -> case addrBits of
+         2 -> BIT  -- Store Immediate is mising -- it's BIT # on 65C02
+         _ -> STA
+  5 -> LDA
+  6 -> CMP
+  7 -> SBC
+  _ -> ILLEGAL
+aluOp 2 addrBits opBits = case addrBits of
+  0 -> ILLEGAL
+  _ -> case opBits of
+         0 -> ASL
+         1 -> ROL
+         2 -> LSR
+         3 -> ROR
+         4 -> case addrBits of
+                2 -> TXA
+                7 -> ILLEGAL
+                _ -> STX
+         5 -> case addrBits of
+                2 -> TAX
+                _ -> LDX
+         6 -> DEC
+         7 -> INC
+         _ -> ILLEGAL
+aluOP _ _ _ = ILLEGAL
 
-aluOp _ _ _ = ILLEGAL
+
 
 
 decodeInstruction :: CpuState -> Byte -> CpuState
@@ -162,6 +187,7 @@ execNoData st@CpuState{..} = (st', addr) where
   (st', addr) = (st {state = Halt}, rPC)      -- TODO
 
 
+{-# NOINLINE execWithData #-}
 execWithData :: CpuState -> Byte -> Addr -> (CpuState, Addr, Byte, Bool)
 execWithData st@CpuState{..} v addrIn = (st', addr, oByte, wr) where
   pc' = rPC+1
@@ -199,7 +225,7 @@ execWithData st@CpuState{..} v addrIn = (st', addr, oByte, wr) where
     _ -> (st {state = Halt}, rPC, 0, False) 
 
 
-
+{-# NOINLINE memOp #-}
 memOp :: CpuState -> Addr -> Byte -> (Byte -> Byte) -> (CpuState, Addr, Byte, Bool)
 memOp st@CpuState{..} addrIn v fn = (st', addr, oByte, wr) where
   pc' = rPC+1
@@ -211,7 +237,7 @@ memOp st@CpuState{..} addrIn v fn = (st', addr, oByte, wr) where
 
 
 
-
+{-# NOINLINE shiftOp #-}
 shiftOp :: CpuState -> Addr -> Byte -> (Byte -> Byte) -> Bool -> (CpuState, Addr, Byte, Bool)
 shiftOp st@CpuState{..} addrIn v fn leftShift = (st', addr, oByte, wr) where
   pc' = rPC+1
@@ -221,6 +247,7 @@ shiftOp st@CpuState{..} addrIn v fn leftShift = (st', addr, oByte, wr) where
     _ -> (st {state = WriteByte, rFlags = flags', rPC = pc'}, addrIn, v', True) where
       (v', flags') = doShiftOp rFlags v fn leftShift
 
+{-# NOINLINE doShiftOp #-}
 doShiftOp :: Byte -> Byte -> (Byte -> Byte) -> Bool -> (Byte, Byte)
 doShiftOp f a fn leftShift = (v, flags) where
   v = fn a
@@ -230,7 +257,7 @@ doShiftOp f a fn leftShift = (v, flags) where
   flags = (flags' .&. (complement carryFlag)) .|. carry
 
 
-
+{-# NOINLINE logicOp #-}
 logicOp :: CpuState -> Byte -> (Byte -> Byte -> Byte) -> (CpuState, Addr, Byte, Bool)
 logicOp st@CpuState{..} v fn = (st {state = FetchI, rA = v', rFlags = flags, rPC = pc'}, pc', 0, False) where
     pc' = rPC+1
@@ -260,6 +287,7 @@ adcNorm flags a b = (res, flags') where
     flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. cOut
 
 -- TODO need to test BCD implementation
+{-# NOINLINE adcBCD #-}
 adcBCD :: Byte -> Byte -> Byte -> (Byte, Byte)
 adcBCD flags a b = (res, flags') where
     cIn = resize (flags .&. carryFlag) :: Unsigned 5
@@ -294,6 +322,7 @@ sbcNorm flags a b = (res, flags') where
 
 
 -- TODO need to test BCD implementation
+{-# NOINLINE sbcBCD #-}
 sbcBCD :: Byte -> Byte -> Byte -> (Byte, Byte)
 sbcBCD flags a b = (res, flags') where
   cIn = resize ((complement flags) .&. carryFlag) :: Unsigned 5
