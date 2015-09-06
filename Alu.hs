@@ -193,7 +193,20 @@ execWithData st@CpuState{..} v addrIn = (st', addr, oByte, wr) where
   pc' = rPC+1
   (st', addr, oByte, wr) = case rAluOp of
     STA -> (st {state = WriteByte, rPC = pc'}, addrIn, rA, True)
+    STX -> (st {state = WriteByte, rPC = pc'}, addrIn, rX, True)
+    STY -> (st {state = WriteByte, rPC = pc'}, addrIn, rY, True)
+
     LDA -> (st {state = FetchI, rA = v, rFlags = setZN rFlags v, rPC= pc'}, pc', 0, False)
+    LDX -> (st {state = FetchI, rX = v, rFlags = setZN rFlags v, rPC= pc'}, pc', 0, False)
+    LDY -> (st {state = FetchI, rY = v, rFlags = setZN rFlags v, rPC= pc'}, pc', 0, False)
+
+    CMP -> (st {state = FetchI, rFlags = flags', rPC = pc'}, pc', 0, False) where
+      flags' = cmp rFlags rA v
+    CPX -> (st {state = FetchI, rFlags = flags', rPC = pc'}, pc', 0, False) where
+      flags' = cmp rFlags rX v
+    CPY -> (st {state = FetchI, rFlags = flags', rPC = pc'}, pc', 0, False) where
+      flags' = cmp rFlags rY v
+
     EOR -> logicOp st v xor 
     ORA -> logicOp st v (.|.)
     AND -> logicOp st v (.&.)
@@ -203,16 +216,15 @@ execWithData st@CpuState{..} v addrIn = (st', addr, oByte, wr) where
     SBC -> (st {state = FetchI, rA = v', rFlags = flags', rPC = pc'}, pc', 0, False) where
       (v', flags) = sbc rFlags rA v
       flags' = setZN flags v'
-    CMP -> (st {state = FetchI, rFlags = flags', rPC = pc'}, pc', 0, False) where
-      flags' = cmp rFlags rA v
+
     ASL -> shiftOp st addrIn v (\x -> shiftL x 1) True
     ROL -> shiftOp st addrIn v rolFn True where
       rolFn x = (x `shiftL` 1) .|. (rFlags .&. carryFlag)  -- Shifts in from carry
     LSR -> shiftOp st addrIn v (\x -> shiftR x 1) False
     ROR -> shiftOp st addrIn v rolFn False where
       rolFn x = (x `shiftR` 1) .|. (rFlags `shiftL` 7)  -- Shifts in from carry
-    STX -> (st {state = WriteByte, rPC = pc'}, addrIn, rX, True)
-    LDX -> (st {state = FetchI, rX = v, rFlags = setZN rFlags v, rPC= pc'}, pc', 0, False)
+
+
     TAX -> (st {state = FetchI, rX = rA, rFlags = setZN rFlags v, rPC= pc'}, pc', 0, False)
     TXA -> (st {state = FetchI, rA = rX, rFlags = setZN rFlags v, rPC= pc'}, pc', 0, False)
     DEC -> memOp st addrIn v (\x -> x-1)
@@ -221,6 +233,7 @@ execWithData st@CpuState{..} v addrIn = (st', addr, oByte, wr) where
 
     -- _ -> trace (printf "Unsupported AluOp %s" (show rAluOp)) (st {state = Halt}, rPC, 0, False) 
     _ -> (st {state = Halt}, rPC, 0, False) 
+
 
 
 
