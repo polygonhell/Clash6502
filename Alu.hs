@@ -231,6 +231,8 @@ execWithData st@CpuState{..} v addrIn = (st', addr, oByte, wr) where
     INC -> memOp st addrIn v (\x -> x+1)
     BIT -> (st {state = FetchI, rFlags = bitFlags rFlags rA v, rPC = pc'}, pc', 0, False)
 
+    JMP -> (st {state = FetchI, rPC = addrIn}, addrIn, 0, False)
+
     -- _ -> trace (printf "Unsupported AluOp %s" (show rAluOp)) (st {state = Halt}, rPC, 0, False) 
     _ -> (st {state = Halt}, rPC, 0, False) 
 

@@ -40,7 +40,7 @@ $(working)/$(topLevel).scr: Makefile
 	test -d $(working) || mkdir $(working)
 	echo "run" > $@
 	echo "-opt_mode area" >> $@
-	echo "-opt_level 2" >> %@
+	echo "-opt_level 2" >> $@
 	echo "-p $(part)" >> $@
 	echo "-top $(topLevel)" >> $@
 	echo "-ifn $(topLevel).prj" >> $@
