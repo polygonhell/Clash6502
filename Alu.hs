@@ -88,6 +88,18 @@ data AluOp = ORA
            | CPY
            | CPX
            | BCC
+           | BRK
+           | RTI
+           | JSR
+           | RTS
+           | PHP
+           | PLP
+           | PHA
+           | PLA
+           | DEY
+           | TAY
+           | INY
+           | INX
            | ILLEGAL
            deriving (Show, Eq)
 
@@ -95,14 +107,32 @@ data AluOp = ORA
 aluOp :: Unsigned 2 -> Unsigned 3 -> Unsigned 3 -> AluOp
 aluOp 0 addrBits opBits = case addrBits of
   4 -> BCC    -- Conditional Branch is determined by the addressing mode op bits determine type
+  2 -> case opBits of
+         0 -> PHP
+         1 -> PLP
+         2 -> PHA
+         3 -> PLA
+         4 -> DEY
+         5 -> TAY
+         6 -> INY
+         7 -> INX
   _ -> case opBits of
-         1 -> BIT
-         2 -> JMP
-         3 -> JMP
+         1 -> case addrBits of
+                0 -> JSR
+                _ -> BIT
+         2 -> case addrBits of
+                0 -> RTI
+                _ -> JMP
+         3 -> case addrBits of
+                0 -> RTS
+                _ -> JMP
          4 -> STY
          5 -> LDY
          6 -> CPY
          7 -> CPX
+         0 -> case addrBits of
+                0 -> BRK
+                _ -> ILLEGAL
          _ -> ILLEGAL
 
 aluOp 1 addrBits opBits = case opBits of
