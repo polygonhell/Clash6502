@@ -30,12 +30,18 @@ data AddrOp = AONone
 
 {-# NOINLINE addrMode #-}
 addrMode :: Unsigned 2 -> Unsigned 3 -> Unsigned 3 -> (AddrMode, AddrOp)
+addrMode 0 0 0 = (Implicit, AONone)
+addrMode 0 0 1 = (Abs, AONone)      -- JSR
+addrMode 0 0 2 = (Implicit, AONone) -- RTI
+addrMode 0 0 3 = (Implicit, AONone) -- RTS
 addrMode 0 0 _ = (Imm, AONone) 
 addrMode 0 1 _ = (Zp, AONone) 
-addrMode 0 3 3 = (AbsInd, AONone) -- JMP (ABS)
+-- addrMode 0 2 _ = (Implicit, AONone) -- PHP etc.
+addrMode 0 3 3 = (AbsInd, AONone)   -- JMP (ABS)
 addrMode 0 3 _ = (Abs, AONone) 
-addrMode 0 4 _ = (Imm, AONone)    -- Conditional Branch
+addrMode 0 4 _ = (Imm, AONone)      -- Conditional Branch
 addrMode 0 5 _ = (Zp, AOPreAddX) 
+-- addrMode 0 6 _ = (Implicit, AONone) -- CLC etc.   
 addrMode 0 7 _ = (Abs, AOPreAddX) 
 
 
@@ -51,7 +57,7 @@ addrMode 1 7 _ = (Abs, AOPreAddX)
 addrMode 2 0 5 = (Imm, AONone)
 addrMode 2 1 _ = (Zp, AONone)
 
-addrMode 2 2 _ = (Implicit, AONone)
+-- addrMode 2 2 _ = (Implicit, AONone)
 
 addrMode 2 3 4 = (Implicit, AONone) -- Not defined in this group
 addrMode 2 3 _ = (Abs, AONone)
@@ -100,6 +106,18 @@ data AluOp = ORA
            | TAY
            | INY
            | INX
+           | CLC
+           | SEC
+           | CLI
+           | SEI
+           | TYA
+           | CLV
+           | CLD
+           | SED
+           | TSX
+           | TXS
+           | DEX
+           | NOP
            | ILLEGAL
            deriving (Show, Eq)
 
@@ -116,6 +134,15 @@ aluOp 0 addrBits opBits = case addrBits of
          5 -> TAY
          6 -> INY
          7 -> INX
+  6 -> case opBits of
+         0 -> CLC
+         1 -> SEC
+         2 -> CLI
+         3 -> SEI
+         4 -> TYA
+         5 -> CLV
+         6 -> CLD
+         7 -> SED
   _ -> case opBits of
          1 -> case addrBits of
                 0 -> JSR
@@ -158,13 +185,19 @@ aluOp 2 addrBits opBits = case addrBits of
          3 -> ROR
          4 -> case addrBits of
                 2 -> TXA
+                6 -> TXS
                 7 -> ILLEGAL
                 _ -> STX
          5 -> case addrBits of
                 2 -> TAX
+                6 -> TSX
                 _ -> LDX
-         6 -> DEC
-         7 -> INC
+         6 -> case addrBits of
+                2 -> DEX
+                _ -> DEC
+         7 -> case addrBits of
+                2 -> NOP
+                _ -> INC
          _ -> ILLEGAL
 aluOP _ _ _ = ILLEGAL
 
