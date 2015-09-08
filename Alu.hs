@@ -34,8 +34,10 @@ addrMode 0 0 _ = (Imm, AONone)
 addrMode 0 1 _ = (Zp, AONone) 
 addrMode 0 3 3 = (AbsInd, AONone) -- JMP (ABS)
 addrMode 0 3 _ = (Abs, AONone) 
+addrMode 0 4 _ = (Imm, AONone)    -- Conditional Branch
 addrMode 0 5 _ = (Zp, AOPreAddX) 
 addrMode 0 7 _ = (Abs, AOPreAddX) 
+
 
 addrMode 1 0 _ = (ZpInd, AOPreAddX)
 addrMode 1 1 _ = (Zp, AONone)
@@ -85,20 +87,23 @@ data AluOp = ORA
            | LDY
            | CPY
            | CPX
+           | BCC
            | ILLEGAL
            deriving (Show, Eq)
 
 {-# NOINLINE aluOp #-}
 aluOp :: Unsigned 2 -> Unsigned 3 -> Unsigned 3 -> AluOp
-aluOp 0 addrBits opBits = case opBits of
-  1 -> BIT
-  2 -> JMP
-  3 -> JMP
-  4 -> STY
-  5 -> LDY
-  6 -> CPY
-  7 -> CPX
-  _ -> ILLEGAL
+aluOp 0 addrBits opBits = case addrBits of
+  4 -> BCC    -- Conditional Branch is determined by the addressing mode op bits determine type
+  _ -> case opBits of
+         1 -> BIT
+         2 -> JMP
+         3 -> JMP
+         4 -> STY
+         5 -> LDY
+         6 -> CPY
+         7 -> CPX
+         _ -> ILLEGAL
 
 aluOp 1 addrBits opBits = case opBits of
   0 -> ORA
@@ -113,7 +118,9 @@ aluOp 1 addrBits opBits = case opBits of
   7 -> SBC
   _ -> ILLEGAL
 aluOp 2 addrBits opBits = case addrBits of
-  0 -> ILLEGAL
+  0 -> case opBits of 
+         5 -> LDX
+         _ -> ILLEGAL
   _ -> case opBits of
          0 -> ASL
          1 -> ROL
@@ -138,7 +145,7 @@ decodeInstruction :: CpuState -> Byte -> CpuState
 decodeInstruction st x = st' where
   o = aluOp dm addrBits opBits
   (m, ao) = addrMode dm addrBits opBits
-  st' = st{rAluOp = o, rAddrMode = m, rAddrOp = ao}
+  st' = st{rAluOp = o, rAddrMode = m, rAddrOp = ao, rIBits = x}
   dm = resize x
   opBits = resize (x `shiftR` 5)
   addrBits = resize (x `shiftR` 2)
@@ -177,9 +184,10 @@ data CpuState = CpuState
   , rAluOp :: AluOp
   , rAddrMode :: AddrMode
   , rAddrOp :: AddrOp
+  , rIBits :: Byte
   } deriving (Show)
 
-initialState = CpuState Init 0xaa 0x00 0x00 0x00 0xfc 0x0000 0x0000 ADC Imm AONone
+initialState = CpuState Init 0xaa 0x00 0x00 0x00 0xfc 0x0000 0x0000 ADC Imm AONone 00
 
 
 execNoData :: CpuState -> (CpuState, Addr)
@@ -232,11 +240,12 @@ execWithData st@CpuState{..} v addrIn = (st', addr, oByte, wr) where
     BIT -> (st {state = FetchI, rFlags = bitFlags rFlags rA v, rPC = pc'}, pc', 0, False)
 
     JMP -> (st {state = FetchI, rPC = addrIn}, addrIn, 0, False)
+    BCC -> (st {state = FetchI, rPC = pc''}, pc'', 0, False) where
+      pc'' = pc' + (bccOffset st v)
 
-    -- _ -> trace (printf "Unsupported AluOp %s" (show rAluOp)) (st {state = Halt}, rPC, 0, False) 
-    _ -> (st {state = Halt}, rPC, 0, False) 
 
-
+    _ -> trace (printf "Unsupported AluOp %s" (show rAluOp)) (st {state = Halt}, rPC, 0, False) 
+    -- _ -> (st {state = Halt}, rPC, 0, False) 
 
 
 bitFlags :: Byte -> Byte -> Byte -> Byte
@@ -245,6 +254,18 @@ bitFlags f a v = f' where
   vF = a .&. 0x40
   f'' = setZN f t 
   f' = (f'' .&. (complement ovFlag)) .|. vF
+
+
+bccOffset :: CpuState -> Byte -> Addr
+bccOffset CpuState{..} v =  offset where 
+  flagMask = case resize (rIBits `shiftR` 6) :: Unsigned 2 of
+    0 -> negFlag
+    1 -> ovFlag
+    2 -> carryFlag
+    3 -> zeroFlag
+  compareTo = if (rIBits .&. 0x20) /= 0 then 0xff else 0x00 :: Byte
+  offset = if (rFlags .&. flagMask) == (compareTo .&. flagMask) then resize v else 0 :: Addr
+
 
 
 
