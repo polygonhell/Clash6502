@@ -244,8 +244,8 @@ execWithData st@CpuState{..} v addrIn = (st', addr, oByte, wr) where
       pc'' = pc' + (bccOffset st v)
 
 
-    _ -> trace (printf "Unsupported AluOp %s" (show rAluOp)) (st {state = Halt}, rPC, 0, False) 
-    -- _ -> (st {state = Halt}, rPC, 0, False) 
+    -- _ -> trace (printf "Unsupported AluOp %s" (show rAluOp)) (st {state = Halt}, rPC, 0, False) 
+    _ -> (st {state = Halt}, rPC, 0, False) 
 
 
 bitFlags :: Byte -> Byte -> Byte -> Byte
