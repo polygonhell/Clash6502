@@ -45,18 +45,9 @@ topEntity = ss where
 
 ram64K :: Signal Addr -> Signal Bool -> Signal Byte -> Signal Byte
 -- ram64K addr wrEn dataIn = blockRamPow2 testRAMContents addr addr wrEn dataIn
-ram64K addr wrEn dataIn = unpack <$> blockRamFilePow2 "utils/test.bin" addr addr wrEn (pack <$> dataIn)
+ram64K addr wrEn dataIn = unpack <$> blockRamFilePow2 "utils/6502_functional_test.bin" addr addr wrEn (pack <$> dataIn)
 
 
-testRAMContents :: Vec 65536 Byte
-testRAMContents = (0x1:>0x2:>0x3:>0x4:>0x05 :> Nil) ++ 
-                  (replicate d507 0) ++ 
-                  (
-                   0xa2:>0x04 :>
-                   0xbd:>0x00:>0x02 :>    -- lda $200,x   
-                   0xa2:>0x02 :>                
-                   0x00 :> Nil) ++ 
-                  (replicate d65012 (0xa9 ::Byte)) ++ (0x00 :> 0x02 :> 0x00 :> 0x00 :> Nil)
 
 
 
@@ -74,6 +65,6 @@ system = probes where
 
 
 -- Note we have to drop 1 because the initial state of dIn is undefined
-runSystem = putStr $ unlines $ L.map (show) $L.drop 1 (sampleN 70 system)
+runSystem = putStr $ unlines $ L.map (show) $L.drop 1 (sampleN 100000 system)
 
 

@@ -56,7 +56,10 @@ pRegString v = res where
   d = if (v .&. decFlag) /= 0 then "D" else "d" 
   o = if (v .&. ovFlag) /= 0 then "O" else "o" 
   n = if (v .&. negFlag) /= 0 then "N" else "n" 
-  res = n L.++ o L.++ d L.++ z L.++ c 
+  i = if (v .&. intFlag) /= 0 then "I" else "i"
+  un = if (v .&. unusedFlag) /= 0 then "U" else "u"
+  b = if (v .&. breakFlag) /= 0 then "B" else "b"
+  res = n L.++ o L.++ un L.++ b L.++ d L.++ i L.++ z L.++ c 
 
 
 

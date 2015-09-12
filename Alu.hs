@@ -118,6 +118,7 @@ data AluOp = ORA
            | TXS
            | DEX
            | NOP
+           | LDP -- Not a real instruction used as a part of PLP
            | ILLEGAL
            deriving (Show, Eq)
 
@@ -134,6 +135,7 @@ aluOp 0 addrBits opBits = case addrBits of
          5 -> TAY
          6 -> INY
          7 -> INX
+         _ -> ILLEGAL
   6 -> case opBits of
          0 -> CLC
          1 -> SEC
@@ -143,6 +145,7 @@ aluOp 0 addrBits opBits = case addrBits of
          5 -> CLV
          6 -> CLD
          7 -> SED
+         _ -> ILLEGAL
   _ -> case opBits of
          1 -> case addrBits of
                 0 -> JSR
@@ -199,7 +202,7 @@ aluOp 2 addrBits opBits = case addrBits of
                 2 -> NOP
                 _ -> INC
          _ -> ILLEGAL
-aluOP _ _ _ = ILLEGAL
+aluOp _ _ _ = ILLEGAL
 
 
 
@@ -229,6 +232,8 @@ data State =  Halt
 
 negFlag   = 0x80 :: Byte
 ovFlag    = 0x40 :: Byte
+unusedFlag = 0x20 :: Byte
+breakFlag = 0x10 :: Byte
 decFlag   = 0x08 :: Byte
 intFlag   = 0x04 :: Byte
 zeroFlag  = 0x02 :: Byte
@@ -250,7 +255,7 @@ data CpuState = CpuState
   , rIBits :: Byte
   } deriving (Show)
 
-initialState = CpuState Init 0xaa 0x00 0x00 0x00 0xfc 0x0000 0x0000 ADC Imm AONone 00
+initialState = CpuState Init 0xaa 0x00 0x00 unusedFlag 0xfc 0x0000 0x0000 ADC Imm AONone 00
 
 
 execNoData :: CpuState -> (CpuState, Addr)
@@ -296,8 +301,10 @@ execWithData st@CpuState{..} v addrIn = (st', addr, oByte, wr) where
       rolFn x = (x `shiftR` 1) .|. (rFlags `shiftL` 7)  -- Shifts in from carry
 
 
-    TAX -> (st {state = FetchI, rX = rA, rFlags = setZN rFlags v, rPC= pc'}, pc', 0, False)
-    TXA -> (st {state = FetchI, rA = rX, rFlags = setZN rFlags v, rPC= pc'}, pc', 0, False)
+    TAX -> (st {state = FetchI, rX = rA, rFlags = setZN rFlags rA, rPC= pc'}, pc', 0, False)
+    TAY -> (st {state = FetchI, rY = rA, rFlags = setZN rFlags rA, rPC= pc'}, pc', 0, False)
+    TXA -> (st {state = FetchI, rA = rX, rFlags = setZN rFlags rX, rPC= pc'}, pc', 0, False)
+    TYA -> (st {state = FetchI, rA = rY, rFlags = setZN rFlags rY, rPC= pc'}, pc', 0, False)
     DEC -> memOp st addrIn v (\x -> x-1)
     INC -> memOp st addrIn v (\x -> x+1)
     BIT -> (st {state = FetchI, rFlags = bitFlags rFlags rA v, rPC = pc'}, pc', 0, False)
@@ -306,7 +313,32 @@ execWithData st@CpuState{..} v addrIn = (st', addr, oByte, wr) where
     BCC -> (st {state = FetchI, rPC = pc''}, pc'', 0, False) where
       pc'' = pc' + (bccOffset st v)
 
+    CLD -> (st {state = FetchI, rFlags = rFlags .&. (complement decFlag),  rPC = pc'}, pc', 0 , False)
+    CLC -> (st {state = FetchI, rFlags = rFlags .&. (complement carryFlag),  rPC = pc'}, pc', 0 , False)
 
+    TXS -> (st {state = FetchI, rSp = rX, rPC = pc'}, pc', 0 , False)
+    TSX -> (st {state = FetchI, rX = rSp, rFlags = setZN rFlags rSp, rPC = pc'}, pc', 0 , False)
+
+    DEY -> (st {state = FetchI, rY = rY', rFlags = setZN rFlags rY', rPC = pc'}, pc', 0, False) where
+      rY' = rY - 1
+    DEX -> (st {state = FetchI, rX = rX', rFlags = setZN rFlags rX', rPC = pc'}, pc', 0, False) where
+      rX' = rX - 1
+    INY -> (st {state = FetchI, rY = rY', rFlags = setZN rFlags rY', rPC = pc'}, pc', 0, False) where
+      rY' = rY + 1
+    INX -> (st {state = FetchI, rX = rX', rFlags = setZN rFlags rX', rPC = pc'}, pc', 0, False) where
+      rX' = rX + 1
+
+    PHA -> (st {state = WriteByte, rPC = pc', rSp = rSp - 1}, 0x100 + (resize rSp), rA, True)
+    -- PLA treated like LDA when it reenters through FetchL - SP updated here, PC updated after exec
+    PLA -> (st {state = FetchL, rSp = rSp', rAluOp = LDA, rAddrMode = Imm}, 0x100 + (resize rSp'), 0, False) where
+      rSp' = rSp+1
+    -- LDP second phase of PLP
+    LDP -> (st {state = FetchI, rFlags = v .|. unusedFlag, rPC = pc'}, pc', 0, False)
+    PLP -> (st {state = FetchL, rSp = rSp', rAluOp = LDP, rAddrMode = Imm}, 0x100 + (resize rSp'), 0, False) where
+      rSp' = rSp+1
+    PHP -> (st {state = WriteByte, rPC = pc', rSp = rSp - 1}, 0x100 + (resize rSp), rFlags .|. breakFlag, True)
+
+    NOP -> (st {state = FetchI, rPC = pc'}, pc', 0, False)
     -- _ -> trace (printf "Unsupported AluOp %s" (show rAluOp)) (st {state = Halt}, rPC, 0, False) 
     _ -> (st {state = Halt}, rPC, 0, False) 
 
@@ -327,7 +359,8 @@ bccOffset CpuState{..} v =  offset where
     2 -> carryFlag
     3 -> zeroFlag
   compareTo = if (rIBits .&. 0x20) /= 0 then 0xff else 0x00 :: Byte
-  offset = if (rFlags .&. flagMask) == (compareTo .&. flagMask) then resize v else 0 :: Addr
+  branchOffset = (resize v)  .|. if (v .&. 0x80) /= 0 then 0xff00 else 0x00 :: Addr
+  offset = if (rFlags .&. flagMask) == (compareTo .&. flagMask) then branchOffset else 0 :: Addr
 
 
 
