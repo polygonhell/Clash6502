@@ -74,8 +74,7 @@ data CpuOut = CpuOut
   } deriving (Show)
 
 
-resetVec :: Addr
-resetVec = 0xfffc
+
 
 
 cpuM = cpu `mealy` initialState
@@ -89,9 +88,11 @@ cpu st@CpuState{..} CpuIn{..} = (st', (out, probes)) where
   (st', out) = case state of
     Halt -> (st, CpuOut 0 0 False)
     Init -> (st { state = WaitPCL, rAddr = resetVec }, CpuOut 0 resetVec False)
-    WaitPCL -> (st { state = WaitPCH, rPC = resize dIn}, CpuOut 0 (rAddr + 1)  False)
+    WaitPCL -> (st { state = WaitPCH, rPC = resize dIn}, CpuOut 0 addr False) where
+                 addr = (rAddr .&. 0xff00) .|. ((rAddr + 1) .&. 0xff)
     WaitPCH -> (st { state = FetchI, rPC = pc' }, CpuOut 0 pc' False) where
-                 pc' = rPC + ((resize dIn :: Addr) `shiftL` 8)
+                 incPC = if rIBits == 0x60 then 1 else 0 
+                 pc' = rPC + ((resize dIn :: Addr) `shiftL` 8) + incPC
 
     -- Read and decode the instruction - execute single byte instructions
     -- PC always advanced             
@@ -145,8 +146,15 @@ cpu st@CpuState{..} CpuIn{..} = (st', (out, probes)) where
                   st'' = st{state = FetchH, rAddr = resize dIn}
 
     -- This is just a delay state for the write to occur on the bus before issuing an instruction read
-    WriteByte -> (st'', CpuOut 0 rPC False) where
-                  st'' = st{state = FetchI}
+    WriteByte -> (st{state = FetchI}, CpuOut 0 rPC False)
+    PushHigh -> (st{state = state', rSp = rSp-1}, CpuOut (resize rAddr) (stackAddr rSp) True) where
+                state' = if rIBits == 0x20 then WriteByte else PushFlags -- JSR doesn't push the flags
+    PushFlags -> (st{state = Interrupt, rSp = rSp-1}, CpuOut rFlags (stackAddr rSp) True)
+    Interrupt -> (st{state = WaitPCL, rFlags = rFlags .|. intFlag, rAddr = brkVec}, CpuOut 0 brkVec False)
+    WaitFlags -> (st{state = WaitPCL, rFlags = dIn, rSp = rSp + 2, rAddr = addr'}, CpuOut 0 addr' False) where
+                rSp' = rSp + 1
+                addr' = stackAddr rSp'
+
 
 
 newAddrMode :: AddrMode -> AddrOp -> (AddrMode, AddrOp)

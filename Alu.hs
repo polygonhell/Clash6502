@@ -14,6 +14,11 @@ import Text.Printf
 
 import Types
 
+resetVec :: Addr
+resetVec = 0xfffc
+brkVec :: Addr
+brkVec = 0xfffe
+
 data AddrMode = Zp
               | Abs
               | Imm
@@ -59,11 +64,13 @@ addrMode 2 1 _ = (Zp, AONone)
 
 -- addrMode 2 2 _ = (Implicit, AONone)
 
-addrMode 2 3 4 = (Implicit, AONone) -- Not defined in this group
 addrMode 2 3 _ = (Abs, AONone)
 -- addrMode 2 4 _ = (Zp, AONone)
+addrMode 2 5 4 = (Zp, AOPreAddY)    -- STX uses preaddY
+addrMode 2 5 5 = (Zp, AOPreAddY)    -- LDX uses preaddY
 addrMode 2 5 _ = (Zp, AOPreAddX)
 -- addrMode 2 6 _ = (Zp, AOPreAddX)
+addrMode 2 7 5 = (Abs, AOPreAddY)   -- STX uses preaddY
 addrMode 2 7 _ = (Abs, AOPreAddX)
 
 addrMode _ _ _ = (Implicit, AONone)
@@ -227,6 +234,10 @@ data State =  Halt
             | FetchH
             | ReadAddr
             | WriteByte
+            | PushHigh
+            | PushFlags
+            | Interrupt
+            | WaitFlags
             deriving (Show)
 
 
@@ -261,6 +272,9 @@ initialState = CpuState Init 0xaa 0x00 0x00 unusedFlag 0xfc 0x0000 0x0000 ADC Im
 execNoData :: CpuState -> (CpuState, Addr)
 execNoData st@CpuState{..} = (st', addr) where
   (st', addr) = (st {state = Halt}, rPC)      -- TODO
+
+stackAddr :: Byte -> Addr
+stackAddr sp = 0x100 .|. (resize sp)
 
 
 {-# NOINLINE execWithData #-}
@@ -314,7 +328,13 @@ execWithData st@CpuState{..} v addrIn = (st', addr, oByte, wr) where
       pc'' = pc' + (bccOffset st v)
 
     CLD -> (st {state = FetchI, rFlags = rFlags .&. (complement decFlag),  rPC = pc'}, pc', 0 , False)
+    SED -> (st {state = FetchI, rFlags = rFlags .|. decFlag,  rPC = pc'}, pc', 0 , False)
     CLC -> (st {state = FetchI, rFlags = rFlags .&. (complement carryFlag),  rPC = pc'}, pc', 0 , False)
+    SEC -> (st {state = FetchI, rFlags = rFlags .|. carryFlag,  rPC = pc'}, pc', 0 , False)
+    CLI -> (st {state = FetchI, rFlags = rFlags .&. (complement intFlag),  rPC = pc'}, pc', 0 , False)
+    SEI -> (st {state = FetchI, rFlags = rFlags .|. intFlag,  rPC = pc'}, pc', 0 , False)
+    CLV -> (st {state = FetchI, rFlags = rFlags .&. (complement ovFlag),  rPC = pc'}, pc', 0 , False)
+    -- SEV -> (st {state = FetchI, rFlags = rFlags .|. ovFlag,  rPC = pc'}, pc', 0 , False)
 
     TXS -> (st {state = FetchI, rSp = rX, rPC = pc'}, pc', 0 , False)
     TSX -> (st {state = FetchI, rX = rSp, rFlags = setZN rFlags rSp, rPC = pc'}, pc', 0 , False)
@@ -328,17 +348,27 @@ execWithData st@CpuState{..} v addrIn = (st', addr, oByte, wr) where
     INX -> (st {state = FetchI, rX = rX', rFlags = setZN rFlags rX', rPC = pc'}, pc', 0, False) where
       rX' = rX + 1
 
-    PHA -> (st {state = WriteByte, rPC = pc', rSp = rSp - 1}, 0x100 + (resize rSp), rA, True)
+    PHA -> (st {state = WriteByte, rPC = pc', rSp = rSp - 1}, stackAddr rSp, rA, True)
     -- PLA treated like LDA when it reenters through FetchL - SP updated here, PC updated after exec
-    PLA -> (st {state = FetchL, rSp = rSp', rAluOp = LDA, rAddrMode = Imm}, 0x100 + (resize rSp'), 0, False) where
+    PLA -> (st {state = FetchL, rSp = rSp', rAluOp = LDA, rAddrMode = Imm}, stackAddr rSp', 0, False) where
       rSp' = rSp+1
     -- LDP second phase of PLP
     LDP -> (st {state = FetchI, rFlags = v .|. unusedFlag, rPC = pc'}, pc', 0, False)
-    PLP -> (st {state = FetchL, rSp = rSp', rAluOp = LDP, rAddrMode = Imm}, 0x100 + (resize rSp'), 0, False) where
+    PLP -> (st {state = FetchL, rSp = rSp', rAluOp = LDP, rAddrMode = Imm}, stackAddr rSp', 0, False) where
       rSp' = rSp+1
-    PHP -> (st {state = WriteByte, rPC = pc', rSp = rSp - 1}, 0x100 + (resize rSp), rFlags .|. breakFlag, True)
+    PHP -> (st {state = WriteByte, rPC = pc', rSp = rSp - 1}, stackAddr rSp, rFlags .|. breakFlag, True)
+
+    JSR -> (st {state = PushHigh, rPC = rAddr, rSp = rSp - 1, rAddr = rPC}, stackAddr rSp, resize(rPC `shiftR` 8), True)
+    RTS -> (st {state = WaitPCL, rSp = rSp + 2, rAddr = sp'}, sp', 0, False) where
+      rSp' = rSp + 1
+      sp' = stackAddr rSp'
+    RTI -> (st {state = WaitFlags, rSp = rSp'}, stackAddr rSp', 0, False) where
+      rSp' = rSp + 1
+
 
     NOP -> (st {state = FetchI, rPC = pc'}, pc', 0, False)
+    BRK -> (st {state = PushHigh, rAddr = pc'', rSp = rSp - 1, rFlags = rFlags .|. breakFlag}, stackAddr rSp, resize(pc'' `shiftR` 8), True) where
+      pc'' = pc' + 1
     -- _ -> trace (printf "Unsupported AluOp %s" (show rAluOp)) (st {state = Halt}, rPC, 0, False) 
     _ -> (st {state = Halt}, rPC, 0, False) 
 
@@ -346,9 +376,9 @@ execWithData st@CpuState{..} v addrIn = (st', addr, oByte, wr) where
 bitFlags :: Byte -> Byte -> Byte -> Byte
 bitFlags f a v = f' where
   t = a .&. v
-  vF = a .&. 0x40
-  f'' = setZN f t 
-  f' = (f'' .&. (complement ovFlag)) .|. vF
+  vnF = v .&. (ovFlag .|. negFlag)
+  zF = if t == 0 then zeroFlag else 0 
+  f' = (f .&. (complement (ovFlag .|. negFlag .|. zeroFlag))) .|. vnF .|. zF
 
 
 bccOffset :: CpuState -> Byte -> Addr
