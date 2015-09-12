@@ -447,13 +447,17 @@ adc flags a b  = (v, flags') where
   else
     adcBCD flags a b
 
+-- Overflow appears to be calculated incorrectly
+ovCalc :: Byte -> Byte -> Byte -> Byte
+ovCalc m n result =  if ((complement (m `xor` n)) .&. (m `xor` result)) .&. 0x80 == 0 then 0 else ovFlag
+
 adcNorm :: Byte -> Byte -> Byte -> (Byte, Byte)
 adcNorm flags a b = (res, flags') where
     cIn = flags .&. carryFlag
     res9 = (resize cIn :: Unsigned 9) + (resize a :: Unsigned 9) + (resize b :: Unsigned 9)
     res = resize res9
     cOut = resize (res9 `shiftR` 8) :: Unsigned 8
-    overflow = if (((a `xor` res) .&. (b `xor` res) .&. 0x80) == 0) then 0 else ovFlag
+    overflow = ovCalc a b res
     flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. cOut
 
 -- TODO need to test BCD implementation
@@ -469,7 +473,7 @@ adcBCD flags a b = (res, flags') where
     res = ((resize highO' :: Unsigned 8) `shiftL` 4) .|. (resize lowO' :: Unsigned 8)
     -- Overflow not documented for the original 6502, but basically set as if for the last nibble calculation in standard ADC case
     highOO = (resize highO :: Unsigned 8) `shiftL` 4
-    overflow = if ((a `xor` highOO) .&. (b `xor` highOO) .&. 0x80) == 0 then 0 else ovFlag
+    overflow = ovCalc a b highOO
     flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. highCout
 
 
@@ -486,8 +490,8 @@ sbcNorm flags a b = (res, flags') where
     cIn = (complement flags) .&. carryFlag -- SBC needs the inverted carry
     res9 = (resize a :: Unsigned 9) - (resize b :: Unsigned 9) - (resize cIn :: Unsigned 9)
     res = resize res9
-    cOut = resize (res9 `shiftR` 8) :: Unsigned 8
-    overflow = if (((a `xor` res) .&. (b `xor` res) .&. 0x80) == 0) then 0 else ovFlag
+    cOut = resize ((complement res9) `shiftR` 8) :: Unsigned 8
+    overflow = ovCalc a (complement b) res
     flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. cOut
 
 
@@ -500,11 +504,11 @@ sbcBCD flags a b = (res, flags') where
   (lowCout, lowO') = if lowO > 9 then (0, lowO - 6) else (1, lowO) :: (Unsigned 5, Unsigned 5) --  Inverted carry
 
   highO = (resize (a `shiftR` 4) :: Unsigned 5) - (resize (b `shiftR` 4) :: Unsigned 5) - lowCout
-  (highCout, highO') = if highO > 9 then (carryFlag, highO - 6) else (0, highO) -- correct Carry
+  (highCout, highO') = if highO > 9 then (0, highO - 6) else (carryFlag, highO) -- correct Carry
   res = ((resize highO' :: Unsigned 8) `shiftL` 4) .|. (resize lowO' :: Unsigned 8)
   -- Overflow not documented for the original 6502, but basically set as if for the last nibble calculation in standard SBC case
   highOO = (resize highO :: Unsigned 8) `shiftL` 4
-  overflow = if ((a `xor` highOO) .&. (b `xor` highOO) .&. 0x80) == 0 then 0 else ovFlag
+  overflow = ovCalc a (complement b) highOO
   flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. highCout
 
 
