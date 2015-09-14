@@ -41,7 +41,7 @@ $(decLiteralD 65012)
 
 topEntity :: Signal (BitVector 4, BitVector 8)
 topEntity = ss where 
-  ss = sevenSegA (resize . prA <$> system)
+  ss = sevenSegA (resize . prPC <$> system)
 
 ram64K :: Signal Addr -> Signal Bool -> Signal Byte -> Signal Byte
 -- ram64K addr wrEn dataIn = blockRamPow2 testRAMContents addr addr wrEn dataIn
