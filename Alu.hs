@@ -465,8 +465,8 @@ adcNorm flags a b = (res, flags') where
 adcBCD :: Byte -> Byte -> Byte -> (Byte, Byte)
 adcBCD flags a b = (res, flags') where
     cIn = resize (flags .&. carryFlag) :: Unsigned 5
-    lowO = (resize a :: Unsigned 5) + (resize b :: Unsigned 5) + cIn
-    (lowCout, lowO') = if lowO > 9 then (1, lowO + 6) else (0, lowO) :: (Unsigned 5, Unsigned 5)
+    lowO = (resize (a .&. 0xf) :: Unsigned 5) + (resize (b .&. 0xf) :: Unsigned 5) + cIn
+    (lowCout, lowO') = if lowO > 9 then (1, (lowO + 6) .&. 0xf) else (0, lowO) :: (Unsigned 5, Unsigned 5)
 
     highO = (resize (a `shiftR` 4) :: Unsigned 5) + (resize (b `shiftR` 4) :: Unsigned 5) + lowCout
     (highCout, highO') = if highO > 9 then (carryFlag, highO + 6) else (0, highO)
@@ -500,8 +500,8 @@ sbcNorm flags a b = (res, flags') where
 sbcBCD :: Byte -> Byte -> Byte -> (Byte, Byte)
 sbcBCD flags a b = (res, flags') where
   cIn = resize ((complement flags) .&. carryFlag) :: Unsigned 5
-  lowO = (resize a :: Unsigned 5) - (resize b :: Unsigned 5) - cIn
-  (lowCout, lowO') = if lowO > 9 then (0, lowO - 6) else (1, lowO) :: (Unsigned 5, Unsigned 5) --  Inverted carry
+  lowO = (resize (a .&. 0xf) :: Unsigned 5) - (resize (b .&. 0xf) :: Unsigned 5) - cIn
+  (lowCout, lowO') = if lowO > 9 then (1, (lowO - 6) .&. 0xf) else (0, lowO) :: (Unsigned 5, Unsigned 5) --  borrow
 
   highO = (resize (a `shiftR` 4) :: Unsigned 5) - (resize (b `shiftR` 4) :: Unsigned 5) - lowCout
   (highCout, highO') = if highO > 9 then (0, highO - 6) else (carryFlag, highO) -- correct Carry
