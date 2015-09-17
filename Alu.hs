@@ -34,7 +34,7 @@ data AddrOp = AONone
             deriving (Show, Eq)
 
 {-# NOINLINE addrMode #-}
-addrMode :: Unsigned 2 -> Unsigned 3 -> Unsigned 3 -> (AddrMode, AddrOp)
+addrMode :: BitVector 2 -> BitVector 3 -> BitVector 3 -> (AddrMode, AddrOp)
 addrMode 0 0 0 = (Implicit, AONone)
 addrMode 0 0 1 = (Abs, AONone)      -- JSR
 addrMode 0 0 2 = (Implicit, AONone) -- RTI
@@ -130,7 +130,7 @@ data AluOp = ORA
            deriving (Show, Eq)
 
 {-# NOINLINE aluOp #-}
-aluOp :: Unsigned 2 -> Unsigned 3 -> Unsigned 3 -> AluOp
+aluOp :: BitVector 2 -> BitVector 3 -> BitVector 3 -> AluOp
 aluOp 0 addrBits opBits = case addrBits of
   4 -> BCC    -- Conditional Branch is determined by the addressing mode op bits determine type
   2 -> case opBits of
@@ -383,7 +383,7 @@ bitFlags f a v = f' where
 
 bccOffset :: CpuState -> Byte -> Addr
 bccOffset CpuState{..} v =  offset where 
-  flagMask = case resize (rIBits `shiftR` 6) :: Unsigned 2 of
+  flagMask = case resize (rIBits `shiftR` 6) :: BitVector 2 of
     0 -> negFlag
     1 -> ovFlag
     2 -> carryFlag
@@ -422,7 +422,7 @@ doShiftOp :: Byte -> Byte -> (Byte -> Byte) -> Bool -> (Byte, Byte)
 doShiftOp f a fn leftShift = (v, flags) where
   v = fn a
   flags' = setZN f v
-  carryBit = if leftShift then 0x80 else 0x01 :: Unsigned 8
+  carryBit = if leftShift then 0x80 else 0x01 :: Byte
   carry = if (a .&. carryBit) == 0 then 0 else carryFlag
   flags = (flags' .&. (complement carryFlag)) .|. carry
 
@@ -454,9 +454,9 @@ ovCalc m n result =  if ((complement (m `xor` n)) .&. (m `xor` result)) .&. 0x80
 adcNorm :: Byte -> Byte -> Byte -> (Byte, Byte)
 adcNorm flags a b = (res, flags') where
     cIn = flags .&. carryFlag
-    res9 = (resize cIn :: Unsigned 9) + (resize a :: Unsigned 9) + (resize b :: Unsigned 9)
+    res9 = (resize cIn :: BitVector 9) + (resize a :: BitVector 9) + (resize b :: BitVector 9)
     res = resize res9
-    cOut = resize (res9 `shiftR` 8) :: Unsigned 8
+    cOut = resize (res9 `shiftR` 8) :: BitVector 8
     overflow = ovCalc a b res
     flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. cOut
 
@@ -464,15 +464,15 @@ adcNorm flags a b = (res, flags') where
 {-# NOINLINE adcBCD #-}
 adcBCD :: Byte -> Byte -> Byte -> (Byte, Byte)
 adcBCD flags a b = (res, flags') where
-    cIn = resize (flags .&. carryFlag) :: Unsigned 5
-    lowO = (resize (a .&. 0xf) :: Unsigned 5) + (resize (b .&. 0xf) :: Unsigned 5) + cIn
-    (lowCout, lowO') = if lowO > 9 then (1, (lowO + 6) .&. 0xf) else (0, lowO) :: (Unsigned 5, Unsigned 5)
+    cIn = resize (flags .&. carryFlag) :: BitVector 5
+    lowO = (resize (a .&. 0xf) :: BitVector 5) + (resize (b .&. 0xf) :: BitVector 5) + cIn
+    (lowCout, lowO') = if lowO > 9 then (1, (lowO + 6) .&. 0xf) else (0, lowO) :: (BitVector 5, BitVector 5)
 
-    highO = (resize (a `shiftR` 4) :: Unsigned 5) + (resize (b `shiftR` 4) :: Unsigned 5) + lowCout
+    highO = (resize (a `shiftR` 4) :: BitVector 5) + (resize (b `shiftR` 4) :: BitVector 5) + lowCout
     (highCout, highO') = if highO > 9 then (carryFlag, highO + 6) else (0, highO)
-    res = ((resize highO' :: Unsigned 8) `shiftL` 4) .|. (resize lowO' :: Unsigned 8)
+    res = ((resize highO' :: BitVector 8) `shiftL` 4) .|. (resize lowO' :: BitVector 8)
     -- Overflow not documented for the original 6502, but basically set as if for the last nibble calculation in standard ADC case
-    highOO = (resize highO :: Unsigned 8) `shiftL` 4
+    highOO = (resize highO :: BitVector 8) `shiftL` 4
     overflow = ovCalc a b highOO
     flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. highCout
 
@@ -488,9 +488,9 @@ sbc flags a b  = (v, flags') where
 sbcNorm :: Byte -> Byte -> Byte -> (Byte, Byte)
 sbcNorm flags a b = (res, flags') where
     cIn = (complement flags) .&. carryFlag -- SBC needs the inverted carry
-    res9 = (resize a :: Unsigned 9) - (resize b :: Unsigned 9) - (resize cIn :: Unsigned 9)
+    res9 = (resize a :: BitVector 9) - (resize b :: BitVector 9) - (resize cIn :: BitVector 9)
     res = resize res9
-    cOut = resize ((complement res9) `shiftR` 8) :: Unsigned 8
+    cOut = resize ((complement res9) `shiftR` 8) :: BitVector 8
     overflow = ovCalc a (complement b) res
     flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. cOut
 
@@ -499,15 +499,15 @@ sbcNorm flags a b = (res, flags') where
 {-# NOINLINE sbcBCD #-}
 sbcBCD :: Byte -> Byte -> Byte -> (Byte, Byte)
 sbcBCD flags a b = (res, flags') where
-  cIn = resize ((complement flags) .&. carryFlag) :: Unsigned 5
-  lowO = (resize (a .&. 0xf) :: Unsigned 5) - (resize (b .&. 0xf) :: Unsigned 5) - cIn
-  (lowCout, lowO') = if lowO > 9 then (1, (lowO - 6) .&. 0xf) else (0, lowO) :: (Unsigned 5, Unsigned 5) --  borrow
+  cIn = resize ((complement flags) .&. carryFlag) :: BitVector 5
+  lowO = (resize (a .&. 0xf) :: BitVector 5) - (resize (b .&. 0xf) :: BitVector 5) - cIn
+  (lowCout, lowO') = if lowO > 9 then (1, (lowO - 6) .&. 0xf) else (0, lowO) :: (BitVector 5, BitVector 5) --  borrow
 
-  highO = (resize (a `shiftR` 4) :: Unsigned 5) - (resize (b `shiftR` 4) :: Unsigned 5) - lowCout
+  highO = (resize (a `shiftR` 4) :: BitVector 5) - (resize (b `shiftR` 4) :: BitVector 5) - lowCout
   (highCout, highO') = if highO > 9 then (0, highO - 6) else (carryFlag, highO) -- correct Carry
-  res = ((resize highO' :: Unsigned 8) `shiftL` 4) .|. (resize lowO' :: Unsigned 8)
+  res = ((resize highO' :: BitVector 8) `shiftL` 4) .|. (resize lowO' :: BitVector 8)
   -- Overflow not documented for the original 6502, but basically set as if for the last nibble calculation in standard SBC case
-  highOO = (resize highO :: Unsigned 8) `shiftL` 4
+  highOO = (resize highO :: BitVector 8) `shiftL` 4
   overflow = ovCalc a (complement b) highOO
   flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. highCout
 

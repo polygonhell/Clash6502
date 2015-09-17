@@ -7,11 +7,10 @@
 module SevenSeg (sevenSegA) where
 
 import CLaSH.Prelude
-import CLaSH.Sized.Unsigned
 import qualified Data.List as L
 
 
-digitToSeg :: Unsigned 4 -> BitVector 8
+digitToSeg :: BitVector 4 -> BitVector 8
 digitToSeg 0x0 = 0xc0
 digitToSeg 0x1 = 0xf9
 digitToSeg 0x2 = 0xa4
@@ -30,19 +29,19 @@ digitToSeg 0xe = 0x86
 digitToSeg 0xf = 0x8e
  
  
-anode :: Unsigned 2 -> BitVector 4
+anode :: BitVector 2 -> BitVector 4
 anode 0 = 0x7
 anode 1 = 0xb
 anode 2 = 0xd
 anode 3 = 0xe
 
-sh :: Unsigned 2 -> Int
+sh :: BitVector 2 -> Int
 sh 0 = 0
 sh 1 = 4
 sh 2 = 8
 sh 3 = 12
 
-multiplex :: (Unsigned 2, Unsigned 16) -> Unsigned 16 -> ((Unsigned 2, Unsigned 16), (BitVector 4, BitVector 8))
+multiplex :: (BitVector 2, BitVector 16) -> BitVector 16 -> ((BitVector 2, BitVector 16), (BitVector 4, BitVector 8))
 multiplex (d, cnt) v = ((d', cnt+1), (an, leds)) where
   d' | (cnt == 0) = d+1
      | otherwise = d

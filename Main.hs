@@ -45,7 +45,7 @@ topEntity = ss where
 
 ram64K :: Signal Addr -> Signal Bool -> Signal Byte -> Signal Byte
 -- ram64K addr wrEn dataIn = blockRamPow2 testRAMContents addr addr wrEn dataIn
-ram64K addr wrEn dataIn = unpack <$> blockRamFilePow2 "utils/6502_functional_test.bin" addr addr wrEn (pack <$> dataIn)
+ram64K addr wrEn dataIn = unpack <$> blockRamFilePow2 "utils/6502_functional_test.bin" (unpack <$> addr) (unpack <$> addr) wrEn (pack <$> dataIn)
 
 
 
@@ -60,7 +60,7 @@ ram64K addr wrEn dataIn = unpack <$> blockRamFilePow2 "utils/6502_functional_tes
 system :: Signal Probes
 system = probes where
   (out, probes) = unbundle $ cpuM $ (CpuIn <$> din)
-  adr = (resize . addr) <$> out :: Signal (Unsigned 16)
+  adr = (resize . addr) <$> out :: Signal (Addr)
   din = ram64K adr (writeEn <$> out) (dOut <$> out)
 
 

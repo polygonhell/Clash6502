@@ -171,7 +171,7 @@ computeAddress st@CpuState{..} dIn = case rAddrMode of
   AbsInd -> addressCalc st rAddr
   _ -> rAddr
 
-addressCalc :: forall n . (KnownNat n) => CpuState -> Unsigned n -> Unsigned n
+addressCalc :: forall n . (KnownNat n) => CpuState -> BitVector n -> BitVector n
 addressCalc CpuState{..} base = case rAddrOp of
   AOPreAddX -> base + (resize rX)
   AOPreAddY -> base + (resize rY)
