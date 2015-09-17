@@ -12,6 +12,7 @@ import CLaSH.Sized.Unsigned
 import Debug.Trace
 import Text.Printf
 
+import qualified Alu2 as A
 import Types
 
 resetVec :: Addr
@@ -434,85 +435,95 @@ logicOp st@CpuState{..} v fn = (st {state = FetchI, rA = v', rFlags = flags, rPC
     v' = fn rA v 
     flags = setZN rFlags v'
 
+{-# NOINLINE setZN #-}
 setZN :: Byte -> Byte -> Byte
 setZN f v = (f .&. (complement (negFlag .|. zeroFlag))) .|. z .|. n where
   n = v .&. negFlag
   z = if v == 0 then zeroFlag else 0
 
 -- Do the add set the OV and C flags
-adc :: Byte -> Byte -> Byte -> (Byte, Byte)
-adc flags a b  = (v, flags') where
-  (v, flags') = if (flags .&. decFlag == 0) then
-    adcNorm flags a b
-  else
-    adcBCD flags a b
+-- adc :: Byte -> Byte -> Byte -> (Byte, Byte)
+-- adc flags a b  = (v, flags') where
+--   (v, flags') = if (flags .&. decFlag == 0) then
+--     adcNorm flags a b
+--   else
+--     adcBCD flags a b
 
 -- Overflow appears to be calculated incorrectly
-ovCalc :: Byte -> Byte -> Byte -> Byte
-ovCalc m n result =  if ((complement (m `xor` n)) .&. (m `xor` result)) .&. 0x80 == 0 then 0 else ovFlag
+-- ovCalc :: Byte -> Byte -> Byte -> Byte
+-- ovCalc m n result =  if ((complement (m `xor` n)) .&. (m `xor` result)) .&. 0x80 == 0 then 0 else ovFlag
 
-adcNorm :: Byte -> Byte -> Byte -> (Byte, Byte)
-adcNorm flags a b = (res, flags') where
-    cIn = flags .&. carryFlag
-    res9 = (resize cIn :: BitVector 9) + (resize a :: BitVector 9) + (resize b :: BitVector 9)
-    res = resize res9
-    cOut = resize (res9 `shiftR` 8) :: BitVector 8
-    overflow = ovCalc a b res
-    flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. cOut
+adc :: Byte -> Byte -> Byte -> (Byte, Byte)
+adc flags a b = adcSbc A.AluADD flags a b
 
--- TODO need to test BCD implementation
-{-# NOINLINE adcBCD #-}
-adcBCD :: Byte -> Byte -> Byte -> (Byte, Byte)
-adcBCD flags a b = (res, flags') where
-    cIn = resize (flags .&. carryFlag) :: BitVector 5
-    lowO = (resize (a .&. 0xf) :: BitVector 5) + (resize (b .&. 0xf) :: BitVector 5) + cIn
-    (lowCout, lowO') = if lowO > 9 then (1, (lowO + 6) .&. 0xf) else (0, lowO) :: (BitVector 5, BitVector 5)
+sbc :: Byte -> Byte -> Byte -> (Byte, Byte)
+sbc flags a b = adcSbc A.AluSUB flags a b
 
-    highO = (resize (a `shiftR` 4) :: BitVector 5) + (resize (b `shiftR` 4) :: BitVector 5) + lowCout
-    (highCout, highO') = if highO > 9 then (carryFlag, highO + 6) else (0, highO)
-    res = ((resize highO' :: BitVector 8) `shiftL` 4) .|. (resize lowO' :: BitVector 8)
-    -- Overflow not documented for the original 6502, but basically set as if for the last nibble calculation in standard ADC case
-    highOO = (resize highO :: BitVector 8) `shiftL` 4
-    overflow = ovCalc a b highOO
-    flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. highCout
+
+{-# NOINLINE adcSbc #-}
+adcSbc :: A.AluOp -> Byte -> Byte -> Byte -> (Byte, Byte)
+adcSbc op flags a b = (res, flags') where
+  cIn = flags ! 0
+  bcd = flags ! 3
+  (res, c, ov) = A.alu op a b cIn bcd
+  cOut = if c /= 0 then carryFlag else 0
+  overflow = if ov /= 0 then ovFlag else 0
+  flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. cOut
+
+-- -- TODO need to test BCD implementation
+-- {-# NOINLINE adcBCD #-}
+-- adcBCD :: Byte -> Byte -> Byte -> (Byte, Byte)
+-- adcBCD flags a b = (res, flags') where
+--     cIn = resize (flags .&. carryFlag) :: BitVector 5
+--     lowO = (resize (a .&. 0xf) :: BitVector 5) + (resize (b .&. 0xf) :: BitVector 5) + cIn
+--     (lowCout, lowO') = if lowO > 9 then (1, (lowO + 6) .&. 0xf) else (0, lowO) :: (BitVector 5, BitVector 5)
+
+--     highO = (resize (a `shiftR` 4) :: BitVector 5) + (resize (b `shiftR` 4) :: BitVector 5) + lowCout
+--     (highCout, highO') = if highO > 9 then (carryFlag, highO + 6) else (0, highO)
+--     res = ((resize highO' :: BitVector 8) `shiftL` 4) .|. (resize lowO' :: BitVector 8)
+--     -- Overflow not documented for the original 6502, but basically set as if for the last nibble calculation in standard ADC case
+--     highOO = (resize highO :: BitVector 8) `shiftL` 4
+--     overflow = ovCalc a b highOO
+--     flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. highCout
 
 
 -- Do the sub set the OV and C flags
-sbc :: Byte -> Byte -> Byte -> (Byte, Byte)
-sbc flags a b  = (v, flags') where
-  (v, flags') = if (flags .&. decFlag == 0) then
-    sbcNorm flags a b
-  else
-    sbcBCD flags a b
+-- sbc :: Byte -> Byte -> Byte -> (Byte, Byte)
+-- sbc flags a b  = (v, flags') where
+--   (v, flags') = if (flags .&. decFlag == 0) then
+--     sbcNorm flags a b
+--   else
+--     sbcBCD flags a b
 
-sbcNorm :: Byte -> Byte -> Byte -> (Byte, Byte)
-sbcNorm flags a b = (res, flags') where
-    cIn = (complement flags) .&. carryFlag -- SBC needs the inverted carry
-    res9 = (resize a :: BitVector 9) - (resize b :: BitVector 9) - (resize cIn :: BitVector 9)
-    res = resize res9
-    cOut = resize ((complement res9) `shiftR` 8) :: BitVector 8
-    overflow = ovCalc a (complement b) res
-    flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. cOut
-
-
--- TODO need to test BCD implementation
-{-# NOINLINE sbcBCD #-}
-sbcBCD :: Byte -> Byte -> Byte -> (Byte, Byte)
-sbcBCD flags a b = (res, flags') where
-  cIn = resize ((complement flags) .&. carryFlag) :: BitVector 5
-  lowO = (resize (a .&. 0xf) :: BitVector 5) - (resize (b .&. 0xf) :: BitVector 5) - cIn
-  (lowCout, lowO') = if lowO > 9 then (1, (lowO - 6) .&. 0xf) else (0, lowO) :: (BitVector 5, BitVector 5) --  borrow
-
-  highO = (resize (a `shiftR` 4) :: BitVector 5) - (resize (b `shiftR` 4) :: BitVector 5) - lowCout
-  (highCout, highO') = if highO > 9 then (0, highO - 6) else (carryFlag, highO) -- correct Carry
-  res = ((resize highO' :: BitVector 8) `shiftL` 4) .|. (resize lowO' :: BitVector 8)
-  -- Overflow not documented for the original 6502, but basically set as if for the last nibble calculation in standard SBC case
-  highOO = (resize highO :: BitVector 8) `shiftL` 4
-  overflow = ovCalc a (complement b) highOO
-  flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. highCout
+-- sbcNorm :: Byte -> Byte -> Byte -> (Byte, Byte)
+-- sbcNorm flags a b = (res, flags') where
+--     cIn = (complement flags) .&. carryFlag -- SBC needs the inverted carry
+--     res9 = (resize a :: BitVector 9) - (resize b :: BitVector 9) - (resize cIn :: BitVector 9)
+--     res = resize res9
+--     cOut = resize ((complement res9) `shiftR` 8) :: BitVector 8
+--     overflow = ovCalc a (complement b) res
+--     flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. cOut
 
 
+-- -- TODO need to test BCD implementation
+-- {-# NOINLINE sbcBCD #-}
+-- sbcBCD :: Byte -> Byte -> Byte -> (Byte, Byte)
+-- sbcBCD flags a b = (res, flags') where
+--   cIn = resize ((complement flags) .&. carryFlag) :: BitVector 5
+--   lowO = (resize (a .&. 0xf) :: BitVector 5) - (resize (b .&. 0xf) :: BitVector 5) - cIn
+--   (lowCout, lowO') = if lowO > 9 then (1, (lowO - 6) .&. 0xf) else (0, lowO) :: (BitVector 5, BitVector 5) --  borrow
 
+--   highO = (resize (a `shiftR` 4) :: BitVector 5) - (resize (b `shiftR` 4) :: BitVector 5) - lowCout
+--   (highCout, highO') = if highO > 9 then (0, highO - 6) else (carryFlag, highO) -- correct Carry
+--   res = ((resize highO' :: BitVector 8) `shiftL` 4) .|. (resize lowO' :: BitVector 8)
+--   -- Overflow not documented for the original 6502, but basically set as if for the last nibble calculation in standard SBC case
+--   highOO = (resize highO :: BitVector 8) `shiftL` 4
+--   overflow = ovCalc a (complement b) highOO
+--   flags' = (flags .&. (complement (ovFlag .|. carryFlag))) .|. overflow .|. highCout
+
+
+
+{-# NOINLINE cmp #-}
 cmp :: Byte -> Byte -> Byte -> Byte
 cmp flags a b = flags' where
   t = a - b
