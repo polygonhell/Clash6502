@@ -69,6 +69,11 @@ $(working)/$(topLevel).bit: $(working)/$(topLevel)_par.ncd
 	ssh administrator@10.211.55.3 '$(sshPreCmd) & bitgen -g DriveDone:yes -g StartupClk:Cclk -w $(topLevel)_par.ncd $(topLevel).bit'
 
 
+timing : $(topLevel).pcf
+
+$(topLevel).pcf: $(working)/$(topLevel)_par.ncd
+	ssh administrator@10.211.55.3 '$(sshPreCmd) & trce -v 12 -fastpaths -o design_timing_report $(topLevel)_par.ncd $(topLevel).pcf'
+
 
 # Create the VHDL files
 vhdl/$(topLevel)/$(topLevel).vhdl : $(topLevel).hs Makefile

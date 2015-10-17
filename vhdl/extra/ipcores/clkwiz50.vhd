@@ -116,7 +116,7 @@ begin
   generic map
    (CLKDV_DIVIDE          => 2.000,
     CLKFX_DIVIDE          => 16,
-    CLKFX_MULTIPLY        => 25,
+    CLKFX_MULTIPLY        => 16,
     CLKIN_DIVIDE_BY_2     => FALSE,
     CLKIN_PERIOD          => 31.25,
     CLKOUT_PHASE_SHIFT    => "NONE",
